@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="12dp">
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <TextView style="@android:style/TextAppearance.Material.Subhead" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="服务地址" />
+            <EditText android:id="@+id/restUrl" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="REST 地址" android:inputType="textUri" />
+            <EditText android:id="@+id/wsUrl" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="WebSocket 地址" android:inputType="textUri" />
+
+            <TextView style="@android:style/TextAppearance.Material.Subhead" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="设备凭证（已有就直接填，没有就用产品 Key 注册）" />
+            <EditText android:id="@+id/deviceId" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="deviceId" android:inputType="text" />
+            <EditText android:id="@+id/macId" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="macId（可空）" android:inputType="text" />
+            <EditText android:id="@+id/secret" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="deviceSecret" android:inputType="textPassword" />
+            <EditText android:id="@+id/productKey" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="产品 API Key（仅注册时用）" android:inputType="text" />
+
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                <Button android:id="@+id/btnSave" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="保存并初始化" />
+                <Button android:id="@+id/btnRegister" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="注册设备" />
+            </LinearLayout>
+
+            <TextView style="@android:style/TextAppearance.Material.Subhead" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="REST" />
+            <EditText android:id="@+id/inputText" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="输入文字" android:text="你好，今天天气怎么样？" />
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                <Button android:id="@+id/btnTranslate" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="翻译" />
+                <Button android:id="@+id/btnTts" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="合成播放" />
+                <Button android:id="@+id/btnChat" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="Chat 流式" />
+            </LinearLayout>
+
+            <TextView style="@android:style/TextAppearance.Material.Subhead" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="语音翻译（WebSocket /ws/v1/voice）" />
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                <EditText android:id="@+id/fromLang" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:hint="源语言" android:text="zh-CN" />
+                <EditText android:id="@+id/toLang" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:hint="目标语言" android:text="en-US" />
+            </LinearLayout>
+            <EditText android:id="@+id/voiceName" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="播报音色（空则不播报）" android:text="en-US-JennyNeural" />
+            <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                <Button android:id="@+id/btnTalk" android:layout_width="0dp" android:layout_weight="2" android:layout_height="64dp" android:text="按住说话" />
+                <Button android:id="@+id/btnLive" android:layout_width="0dp" android:layout_weight="2" android:layout_height="64dp" android:text="实时：开始" />
+                <Button android:id="@+id/btnHangup" android:layout_width="0dp" android:layout_weight="1" android:layout_height="64dp" android:text="断开" />
+            </LinearLayout>
+            <Button android:id="@+id/btnFakeMic" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="用合成语音测试（不用麦克风）" />
+            <TextView android:id="@+id/micLevel" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#777777" android:text="麦克风电平：-" />
+            <TextView android:id="@+id/partial" android:layout_width="match_parent" android:layout_height="wrap_content" android:minLines="2" android:textColor="#777777" android:hint="实时识别结果" />
+        </LinearLayout>
+    </ScrollView>
+
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+        <TextView style="@android:style/TextAppearance.Material.Subhead" android:layout_width="0dp" android:layout_weight="1" android:layout_height="wrap_content" android:text="日志" />
+        <Button android:id="@+id/btnClear" style="@android:style/Widget.Material.Button.Borderless" android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="清空" />
+    </LinearLayout>
+    <ScrollView
+        android:id="@+id/logScroll"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="0.4"
+        android:background="#F2F2F2">
+        <TextView
+            android:id="@+id/log"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:padding="6dp"
+            android:textIsSelectable="true"
+            android:textSize="12sp"
+            android:typeface="monospace" />
+    </ScrollView>
+</LinearLayout>
