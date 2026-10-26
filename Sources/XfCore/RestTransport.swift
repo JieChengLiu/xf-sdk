@@ -5,16 +5,16 @@ import Foundation
 final class RestTransport {
     let session: URLSession
     let baseURL: URL
-    let credentials: DeviceCredentials?
+    let auth: XfAuth?
     let clock: ServerClock
 
     private static let successCode = 200
 
-    /// credentials 为 nil 时不签名（设备注册接口）
-    init(session: URLSession, baseURL: URL, credentials: DeviceCredentials?, clock: ServerClock) {
+    /// auth 为 nil 时不签名（设备注册接口）
+    init(session: URLSession, baseURL: URL, auth: XfAuth?, clock: ServerClock) {
         self.session = session
         self.baseURL = baseURL
-        self.credentials = credentials
+        self.auth = auth
         self.clock = clock
     }
 
@@ -57,9 +57,9 @@ final class RestTransport {
     }
 
     func signed(_ request: URLRequest) throws -> URLRequest {
-        guard let credentials = credentials else { return request }
+        guard let auth = auth else { return request }
         var request = request
-        for (name, value) in try Signer.headers(credentials: credentials, clock: clock) {
+        for (name, value) in try auth.headers(clock: clock) {
             request.setValue(value, forHTTPHeaderField: name)
         }
         return request

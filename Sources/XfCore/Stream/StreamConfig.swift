@@ -64,8 +64,11 @@ public struct StreamConfig {
         self.voiceName = voiceName
     }
 
-    func json(deviceId: String, macId: String) -> [String: Any] {
-        var json: [String: Any] = ["command": "config", "deviceId": deviceId, "macId": macId]
+    /// deviceId / macId 为 nil 是 API Key 模式：不带，服务端按 key 主体记账
+    func json(deviceId: String?, macId: String?) -> [String: Any] {
+        var json: [String: Any] = ["command": "config"]
+        json["deviceId"] = deviceId
+        json["macId"] = macId
         json["sourceLanguage"] = sourceLanguage
         json["targetLanguage"] = targetLanguage
         json["asrProvider"] = asrProvider

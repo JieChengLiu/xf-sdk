@@ -3,19 +3,19 @@ import Foundation
 /// 一次性语音合成，对应 /trans/v1/device/synthesize。流式合成用 `XfClient.ttsSession`。
 public final class TTSAPI {
     private let transport: RestTransport
-    private let deviceId: String
+    private let deviceId: String?
 
-    init(transport: RestTransport, deviceId: String) {
+    init(transport: RestTransport, deviceId: String?) {
         self.transport = transport
         self.deviceId = deviceId
     }
 
     public func synthesize(_ request: TTSRequest) async throws -> TTSResult {
         var body: [String: Any] = [
-            "deviceId": deviceId,
             "text": request.text,
             "type": request.ssml ? "ssml" : "text",
         ]
+        body["deviceId"] = deviceId
         body["languageCode"] = request.languageCode
         body["voiceName"] = request.voiceName
         body["outputFormat"] = request.outputFormat

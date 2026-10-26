@@ -10,7 +10,7 @@ public final class DeviceRegistrar {
 
     public init(restBaseURL: URL, urlSession: URLSession = .shared) {
         // 注册接口不需要设备签名
-        transport = RestTransport(session: urlSession, baseURL: restBaseURL, credentials: nil, clock: ServerClock())
+        transport = RestTransport(session: urlSession, baseURL: restBaseURL, auth: nil, clock: ServerClock())
     }
 
     /// - Parameters:
@@ -34,7 +34,11 @@ public final class DeviceAPI {
     /// 恢复出厂：作废当前 deviceId + secret，换一套新的。成功后旧凭证立刻失效，
     /// 必须把返回的新凭证落盘并用它重建 `XfClient`——secret 只在这次响应里出现。
     /// - Parameter newMacId: 重置后的新 macId（不换就不传）
+    /// - Throws: 用 API Key 构建的 client 调用时抛 `.invalidRequest`（服务端不收 key，防止 key 外泄后批量重置设备）
     public func reset(newMacId: String? = nil, reason: String? = nil) async throws -> DeviceRegistration {
+        guard transport.auth?.deviceCredentials != nil else {
+            throw XfError(kind: .invalidRequest, message: "device.reset requires device credentials, not an API key")
+        }
         var body: [String: Any] = [:]
         body["macId"] = newMacId
         body["reason"] = reason

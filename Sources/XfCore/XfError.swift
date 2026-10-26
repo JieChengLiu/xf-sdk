@@ -14,6 +14,8 @@ public struct XfError: Error, CustomStringConvertible {
         case deviceExpired
         case macMismatch
         case productDisabled
+        /// API Key 不存在、已禁用或已过期（message 里有具体原因）
+        case apiKeyInvalid
         case quotaExceeded
         /// 参数校验失败
         case invalidRequest
@@ -58,6 +60,8 @@ public struct XfError: Error, CustomStringConvertible {
             kind = .macMismatch
         } else if message.contains("设备产品") {
             kind = .productDisabled
+        } else if isApiKeyRejection(code: code, message: message) {
+            kind = .apiKeyInvalid
         } else if message.contains("签名") || message.contains("设备密钥未配置") {
             kind = .signatureInvalid
         } else if message.contains("Quota exceeded") {
@@ -70,6 +74,16 @@ public struct XfError: Error, CustomStringConvertible {
             kind = .serverError
         }
         return XfError(kind: kind, message: message, serverCode: code)
+    }
+
+    // ApiKeyAuthServiceImpl 的几种失败文案："invalid api key"、"api key disabled"、
+    // "api key expired"、"empty api key"、"missing Authorization header"
+    // 大多数接口回 401；长音频转写回 500 + "鉴权失败: <原因>"。不能只看文案：上游厂商的报错
+    // （如 "Incorrect API key provided"）也可能被原样包进 500
+    private static func isApiKeyRejection(code: Int?, message: String) -> Bool {
+        guard code == 401 || message.hasPrefix("鉴权失败") else { return false }
+        return message.range(of: "api key", options: .caseInsensitive) != nil
+            || message.contains("Authorization header")
     }
 
     static func network(_ error: Error) -> XfError {

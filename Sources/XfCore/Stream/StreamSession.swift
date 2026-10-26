@@ -17,7 +17,7 @@ public class StreamSession {
     private let urlSession: URLSession
     private let url: URL
     private let configJSON: [String: Any]
-    private let credentials: DeviceCredentials
+    private let auth: XfAuth
     private let clock: ServerClock
     private let tools: [ClientTool]
     private let continuation: AsyncThrowingStream<StreamEvent, Error>.Continuation
@@ -42,12 +42,12 @@ public class StreamSession {
     private static let pingIntervalNanos: UInt64 = 20_000_000_000
 
     init(urlSession: URLSession, url: URL, configJSON: [String: Any],
-         credentials: DeviceCredentials, clock: ServerClock, tools: [ClientTool] = [], readyTimeout: TimeInterval = 30,
+         auth: XfAuth, clock: ServerClock, tools: [ClientTool] = [], readyTimeout: TimeInterval = 30,
          makeWebSocketTask: ((URLRequest) -> URLSessionWebSocketTask)? = nil) {
         self.urlSession = urlSession
         self.url = url
         self.configJSON = configJSON
-        self.credentials = credentials
+        self.auth = auth
         self.clock = clock
         self.tools = tools
         self.readyTimeout = readyTimeout
@@ -84,7 +84,7 @@ public class StreamSession {
 
         var request = URLRequest(url: url)
         do {
-            for (name, value) in try Signer.headers(credentials: credentials, clock: clock) {
+            for (name, value) in try auth.headers(clock: clock) {
                 request.setValue(value, forHTTPHeaderField: name)
             }
         } catch {

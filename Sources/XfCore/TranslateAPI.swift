@@ -3,9 +3,9 @@ import Foundation
 /// 文本翻译，对应 /trans/v1/device/text 与 /trans/v1/device/mutual-translate。
 public final class TranslateAPI {
     private let transport: RestTransport
-    private let deviceId: String
+    private let deviceId: String?
 
-    init(transport: RestTransport, deviceId: String) {
+    init(transport: RestTransport, deviceId: String?) {
         self.transport = transport
         self.deviceId = deviceId
     }
@@ -17,13 +17,13 @@ public final class TranslateAPI {
         to targetLanguage: String,
         provider: String? = nil
     ) async throws -> TranslateResult {
-        // 服务端要求 body 里的 deviceId 与签名头一致
+        // 设备签名时服务端要求 body 里的 deviceId 与签名头一致；API Key 模式不带
         var body: [String: Any] = [
-            "deviceId": deviceId,
             "text": text,
             "sourceLanguage": sourceLanguage,
             "targetLanguage": targetLanguage,
         ]
+        body["deviceId"] = deviceId
         body["provider"] = provider
         let data = try await transport.object(transport.jsonRequest("trans/v1/device/text", body: body))
         return TranslateResult(text: data["text"] as? String ?? "", used: data.int64("used") ?? 0)
@@ -37,11 +37,11 @@ public final class TranslateAPI {
         provider: String? = nil
     ) async throws -> MutualTranslateResult {
         var body: [String: Any] = [
-            "deviceId": deviceId,
             "text": text,
             "languageA": languageA,
             "languageB": languageB,
         ]
+        body["deviceId"] = deviceId
         body["provider"] = provider
         let data = try await transport.object(transport.jsonRequest("trans/v1/device/mutual-translate", body: body))
         return MutualTranslateResult(

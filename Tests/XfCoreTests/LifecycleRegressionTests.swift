@@ -25,7 +25,7 @@ final class LifecycleRegressionTests: XCTestCase {
         defer { network.invalidateAndCancel() }
         let session = StreamSession(urlSession: network, url: URL(string: "ws://127.0.0.1:9")!,
                                     configJSON: ["command": "config"],
-                                    credentials: DeviceCredentials(deviceId: "d") { "secret" }, clock: ServerClock())
+                                    auth: .device(DeviceCredentials(deviceId: "d") { "secret" }), clock: ServerClock())
         assertProtocolFailure(session) {
             session.sendAudio(Data(count: 2 * 1024 * 1024 + 1))
             session.sendAudio(Data([1]))
@@ -37,7 +37,7 @@ final class LifecycleRegressionTests: XCTestCase {
         let network = URLSession(configuration: .ephemeral)
         defer { network.invalidateAndCancel() }
         let session = StreamSession(urlSession: network, url: URL(string: "ws://127.0.0.1:9")!,
-                                    configJSON: [:], credentials: DeviceCredentials(deviceId: "d") { "secret" }, clock: ServerClock())
+                                    configJSON: [:], auth: .device(DeviceCredentials(deviceId: "d") { "secret" }), clock: ServerClock())
         assertProtocolFailure(session) {
             session.sendCommand(["text": String(repeating: "汉", count: 700_000)])
         }
@@ -64,7 +64,7 @@ final class LifecycleRegressionTests: XCTestCase {
             return "secret"
         }
         let session = StreamSession(urlSession: network, url: URL(string: "ws://127.0.0.1:9")!,
-                                    configJSON: ["command": "config"], credentials: credentials, clock: ServerClock(),
+                                    configJSON: ["command": "config"], auth: .device(credentials), clock: ServerClock(),
                                     readyTimeout: timeout, makeWebSocketTask: { request in
                                         count.increment()
                                         return network.webSocketTask(with: request)

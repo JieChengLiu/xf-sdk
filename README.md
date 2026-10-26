@@ -2,7 +2,7 @@
 
 在 Android / iOS App 里接入 XFusion 的翻译、语音合成、语音识别 / 语音翻译、大模型对话等能力。
 
-初始化一次 `XfClient` 后，所有接口都自动完成设备签名、时钟校准和协议处理，你只需要调用方法、处理结果。
+初始化一次 `XfClient` 后，所有接口都自动完成鉴权（设备签名或 API Key）、时钟校准和协议处理，你只需要调用方法、处理结果。
 
 | | Android | iOS |
 |---|---|---|
@@ -48,7 +48,7 @@ dependencyResolutionManagement {
 
 ```kotlin
 dependencies {
-    implementation("com.xfusion.sdk:xf-sdk-core:0.1.0")
+    implementation("com.xfusion.sdk:xf-sdk-core:0.2.0")
 }
 ```
 
@@ -69,7 +69,7 @@ Xcode → File → Add Package Dependencies，填：
 https://github.com/JieChengLiu/xf-sdk
 ```
 
-版本选 `0.1.0` 或 Up to Next Minor，添加 `XfCore` 到你的 Target。用语音功能需要在 Info.plist 加 `NSMicrophoneUsageDescription`。
+版本选 `0.2.0` 或 Up to Next Minor，添加 `XfCore` 到你的 Target。用语音功能需要在 Info.plist 加 `NSMicrophoneUsageDescription`。
 
 ## 快速开始
 
@@ -117,6 +117,39 @@ let client = XfClient(config: .init(
 
 > **建议启动后先调一次任意 REST 接口**（比如一次翻译），再开语音会话。SDK 会用 REST 响应校准手机时钟；
 > 手机时间偏差超过 5 分钟时，没校准过的语音会话握手会被拒绝（`SIGNATURE_INVALID`）。
+
+### 另一种方式：API Key 接入
+
+如果你开通的是公司级 **API Key**（`OAK-` 开头，按用量后付费），可以不注册设备，直接用 key 创建 `XfClient`，接口和用法完全一样：
+
+```kotlin
+val client = XfClient.Builder()
+    .restBaseUrl("https://transcribe.azopenai.com")
+    .wsBaseUrl("wss://transcribe.azopenai.com")
+    .apiKey { myBackend.fetchXfApiKey() }   // 与 device(...) 二选一
+    .build()
+```
+
+```swift
+let client = XfClient(config: .init(
+    restBaseURL: URL(string: "https://transcribe.azopenai.com")!,
+    wsBaseURL: URL(string: "wss://transcribe.azopenai.com")!,
+    apiKey: { try MyBackend.xfApiKey() }
+))
+```
+
+> ⚠️ **API Key 是整个公司账户的凭证，没有额度上限，产生的用量全部计入你的账单。**
+> 写进 App 安装包的 key 一定能被反编译拿到，拿到的人可以无限制地以你的名义调用。所以：
+>
+> - **不要把 key 写死在 App 里。** 回调里从你自己的服务端取（登录后下发、只放内存），SDK 每个请求都会调一次回调，你可以在里面缓存和轮换。
+> - 面向大量终端用户分发的 App，优先用上面的**设备凭证**方式：每台设备一个 secret，泄露只影响一台，并且有额度控制。
+> - 发现 key 泄露立即在控制台禁用或轮换；禁用后最多 5 分钟内全部断开。
+
+API Key 方式的差异：
+
+- 没有设备身份：`client.credentials` 为 null / nil，`client.device.reset` 不可用（直接报错，不会发出请求）。
+- 没有跨会话的设备身份：语音会话里的用户记忆（`syncMemories`）只在当前这条连接内有效，每次新建会话需要重新同步；个人声音不可用。
+- key 失效、被禁用或过期时报 `API_KEY_INVALID`；语音会话握手被拒同样报 `SIGNATURE_INVALID`（服务端握手失败不区分原因）。
 
 ## REST 接口
 
@@ -293,7 +326,7 @@ config.tools = [ClientTool(name: "volume_up", description: "用户想把声音�
 
 ## 错误处理
 
-所有错误都是 `XfException`（Android）/ `XfError`（iOS），按 `kind` 处理：
+所有错误都是 `XfException`（Android）/ `XfError`（iOS），按 `kind` 处理（iOS 的 kind 是小驼峰，如 `apiKeyInvalid`）：
 
 | kind | 含义 | 建议处理 |
 |---|---|---|
@@ -303,6 +336,7 @@ config.tools = [ClientTool(name: "volume_up", description: "用户想把声音�
 | `DEVICE_NOT_FOUND` / `MAC_MISMATCH` | 设备不存在 / MAC 不匹配 | 重新注册设备 |
 | `DEVICE_INACTIVE` / `DEVICE_EXPIRED` / `PRODUCT_DISABLED` | 设备停用 / 过期 / 产品停用 | 联系我们 |
 | `QUOTA_EXCEEDED` | 额度用完 | 提示用户或联系我们充值 |
+| `API_KEY_INVALID` | API Key 无效 / 已禁用 / 已过期（仅 API Key 方式） | 从你的服务端重新获取 key；仍失败联系我们 |
 | `INVALID_REQUEST` | 参数错误 | 检查参数 |
 | `SERVER_ERROR` | 服务端异常 | 稍后重试 |
 | `NETWORK` | 网络错误 | 检查网络后重试 |
@@ -327,4 +361,11 @@ GitHub 仓库 https://github.com/JieChengLiu/xf-sdk 里：
 
 ## 版本
 
-当前版本 `0.1.0`。`0.x` 期间小版本可能有不兼容改动，升级前请查看更新说明。
+当前版本 `0.2.0`。`0.x` 期间小版本可能有不兼容改动，升级前请查看更新说明。
+
+### 0.2.0
+
+- 新增 API Key 接入（见「另一种方式：API Key 接入」）和错误类型 `API_KEY_INVALID` / `apiKeyInvalid`。
+- **不兼容**：`client.credentials` 改为可空（API Key 方式下为 null / nil）。
+- **不兼容（iOS）**：`XfClient.Config` 的 `credentials` 属性换成 `auth: XfAuth`；原来的 `init(restBaseURL:wsBaseURL:credentials:)` 照常可用。
+- 修复（Android）：secret / key 回调抛异常时不再导致 App 崩溃，改为报 `NETWORK`。
