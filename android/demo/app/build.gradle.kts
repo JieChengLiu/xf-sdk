@@ -28,5 +28,5 @@ android {
 
 dependencies {
     // okhttp 随 SDK 的 pom 传递进来；org.json 用 Android 系统自带的
-    implementation("com.xfusion.sdk:xf-sdk-core:0.2.0")
+    implementation("com.xfusion.sdk:xf-sdk-core:0.3.0")
 }

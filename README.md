@@ -27,6 +27,7 @@
 | 只识别 / 只合成 / 只补全（流式） | `client.asrSession` / `ttsSession` / `llmSession` |
 | 多模态 / 实时语音大模型 | `client.multimodalSession` / `voiceLiveSession` |
 | 客户端工具（让大模型调用 App 本地能力） | `ClientTool` |
+| 端侧降噪（16kHz PCM） | `NoiseSuppressor`（Android 在 `com.xfusion.sdk.audio` 包） |
 
 ## 安装
 
@@ -48,7 +49,7 @@ dependencyResolutionManagement {
 
 ```kotlin
 dependencies {
-    implementation("com.xfusion.sdk:xf-sdk-core:0.2.0")
+    implementation("com.xfusion.sdk:xf-sdk-core:0.3.0")
 }
 ```
 
@@ -69,7 +70,7 @@ Xcode → File → Add Package Dependencies，填：
 https://github.com/JieChengLiu/xf-sdk
 ```
 
-版本选 `0.2.0` 或 Up to Next Minor，添加 `XfCore` 到你的 Target。用语音功能需要在 Info.plist 加 `NSMicrophoneUsageDescription`。
+版本选 `0.3.0` 或 Up to Next Minor，添加 `XfCore` 到你的 Target。用语音功能需要在 Info.plist 加 `NSMicrophoneUsageDescription`。
 
 ## 快速开始
 
@@ -259,6 +260,31 @@ for try await event in session.events {
 
 SDK 不包含录音和播放，由 App 用系统 API 实现（Android `AudioRecord` / `AudioTrack`，iOS `AVAudioEngine`）。
 
+### 端侧降噪（可选）
+
+`NoiseSuppressor` 对 16kHz / 16bit / 单声道 PCM 做降噪，纯 Kotlin / Swift 实现，不依赖模型和原生库。
+可以用在发给 SDK 之前，也可以单独用于 App 自己的音频处理（本地 VAD、录音存档等）。
+
+```kotlin
+val suppressor = NoiseSuppressor()               // 一路音频一个实例
+recorder.onPcm { pcm -> session.sendPcm(suppressor.process(pcm)) }
+```
+
+```swift
+let suppressor = NoiseSuppressor()
+recorder.onPCM { session.sendPCM(suppressor.process($0)) }
+```
+
+- **输入输出**：返回与输入等长的数据，样本或小端字节都可以（`ShortArray` / `ByteArray`，`[Int16]` / `Data`）。
+  每次传多长都行，建议 20ms（320 个样本）。
+- **延迟**：输出固定比输入晚 32ms（`LATENCY_SAMPLES` / `latencySamples` = 512 个样本），开头是 32ms 静音。
+- **强度**：`NoiseSuppressor(maxAttenuationDb = 15.0)`（iOS：`NoiseSuppressor(maxAttenuationDb: 15)`），
+  越大降噪越狠、越容易伤到语音，建议 10～25；0 表示不降噪。
+- **适用场景**：风扇、空调、电流声、车内等稳态噪声；旁人说话、键盘、音乐这类非稳态噪声压不干净。
+  噪声估计需要约 1 秒适应，刚开始的一小段效果偏弱。
+- **线程与复用**：实例不是线程安全的，一个实例只处理一路连续音频；开始一段不相关的音频前调用 `reset()`。
+- 服务端识别本身也会降噪，只为了识别效果不需要在端侧再开。
+
 ### 会话类型
 
 | 预设 | 会话 | 额外方法 |
@@ -361,7 +387,11 @@ GitHub 仓库 https://github.com/JieChengLiu/xf-sdk 里：
 
 ## 版本
 
-当前版本 `0.2.0`。`0.x` 期间小版本可能有不兼容改动，升级前请查看更新说明。
+当前版本 `0.3.0`。`0.x` 期间小版本可能有不兼容改动，升级前请查看更新说明。
+
+### 0.3.0
+
+- 新增端侧降噪 `NoiseSuppressor`（见「端侧降噪（可选）」），纯 Kotlin / Swift 实现，不增加依赖。
 
 ### 0.2.0
 
