@@ -113,6 +113,9 @@ public struct TranscriptionRequest {
     public var translateLanguage: String?
     /// 完成后服务端回调你自己的服务端
     public var callbackUrl: String?
+    /// 要转录的声道，0 左、1 右，不传则两个声道都转。左右内容相同的立体声传 [0]，否则同一段话会出现两遍；
+    /// 人声只在右声道时传 [1]；左右各录一人的通话录音或不确定时不要传
+    public var channels: [Int]?
 
     public init(taskName: String, sourceLanguage: String, audioFormat: String) {
         self.taskName = taskName
@@ -131,6 +134,7 @@ public struct TranscriptionRequest {
         json["summaryLanguage"] = summaryLanguage
         json["translateLanguage"] = translateLanguage
         json["callbackUrl"] = callbackUrl
+        json["channels"] = channels
         return json
     }
 
@@ -146,6 +150,7 @@ public struct TranscriptionRequest {
         if let v = summaryLanguage { fields.append(("summaryLanguage", v)) }
         if let v = translateLanguage { fields.append(("translateLanguage", v)) }
         if let v = callbackUrl { fields.append(("callbackUrl", v)) }
+        channels?.forEach { fields.append(("channels", String($0))) }
         return fields
     }
 }

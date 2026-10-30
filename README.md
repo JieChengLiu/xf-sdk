@@ -49,7 +49,7 @@ dependencyResolutionManagement {
 
 ```kotlin
 dependencies {
-    implementation("com.xfusion.sdk:xf-sdk-core:0.3.0")
+    implementation("com.xfusion.sdk:xf-sdk-core:0.3.1")
 }
 ```
 
@@ -70,7 +70,7 @@ Xcode → File → Add Package Dependencies，填：
 https://github.com/JieChengLiu/xf-sdk
 ```
 
-版本选 `0.3.0` 或 Up to Next Minor，添加 `XfCore` 到你的 Target。用语音功能需要在 Info.plist 加 `NSMicrophoneUsageDescription`。
+版本选 `0.3.1` 或 Up to Next Minor，添加 `XfCore` 到你的 Target。用语音功能需要在 Info.plist 加 `NSMicrophoneUsageDescription`。
 
 ## 快速开始
 
@@ -183,7 +183,12 @@ client.chat.stream(ChatApi.request("gpt-5.4-nano", listOf(ChatMessage.user("你�
 val task = client.transcription.uploadAndCreate(TranscriptionRequest("会议", "zh-CN", "m4a", needSummary = true), file)
 while (!client.transcription.status(task.taskId).execute().isCompleted) Thread.sleep(5000)
 val result = client.transcription.result(task.taskId).execute()
+
+// 左右内容相同的立体声，只转一个声道，否则同一段话会出现两遍
+val mono = TranscriptionRequest("会议", "zh-CN", "mp3", channels = listOf(0))
 ```
+
+`channels`（iOS 同名）用来选择要转录的声道，`0` 是左声道，`1` 是右声道，不传则两个声道都转。人声只在右声道时传 `1`；左右各录一人的通话录音或不确定时不要传，否则可能丢内容。单声道文件会忽略此参数。
 
 ```swift
 let text = try await client.translate.text("你好", from: "zh-Hans", to: "en").text
@@ -387,7 +392,11 @@ GitHub 仓库 https://github.com/JieChengLiu/xf-sdk 里：
 
 ## 版本
 
-当前版本 `0.3.0`。`0.x` 期间小版本可能有不兼容改动，升级前请查看更新说明。
+当前版本 `0.3.1`。`0.x` 期间小版本可能有不兼容改动，升级前请查看更新说明。
+
+### 0.3.1
+
+- `TranscriptionRequest` 新增可选的 `channels`，用来选择长音频转写的声道。
 
 ### 0.3.0
 

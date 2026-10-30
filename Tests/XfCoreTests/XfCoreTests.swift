@@ -174,6 +174,16 @@ final class RestHelperTests: XCTestCase {
         XCTAssertTrue(body.hasSuffix("--\(form.boundary)--\r\n"))
     }
 
+    func testTranscriptionChannelsAreOptional() {
+        var request = TranscriptionRequest(taskName: "会议", sourceLanguage: "zh-CN", audioFormat: "mp3")
+        XCTAssertNil(request.json()["channels"])
+        XCTAssertFalse(request.formFields().contains { $0.0 == "channels" })
+
+        request.channels = [1]
+        XCTAssertEqual(request.json()["channels"] as? [Int], [1])
+        XCTAssertEqual(request.formFields().filter { $0.0 == "channels" }.map { $0.1 }, ["1"])
+    }
+
     func testChatCompletionRejectsResultEnvelope() {
         XCTAssertThrowsError(try ChatAPI.checkCompletion(["code": NSNumber(value: 500), "message": "鉴权失败: 设备未激活"])) { error in
             XCTAssertEqual((error as? XfError)?.kind, .deviceInactive)
