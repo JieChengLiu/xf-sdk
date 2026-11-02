@@ -95,6 +95,12 @@ public final class XfClient {
                      auth: auth, clock: clock, tools: config.tools)
     }
 
+    /// /ws/v1/dual-screen-translation：一台设备两块屏幕的面对面互译，连接后两侧常开收音
+    public func dualScreenSession(_ config: DualScreenConfig) -> DualScreenSession {
+        DualScreenSession(urlSession: self.config.urlSession, url: wsURL("ws/v1/dual-screen-translation"),
+                          configJSON: config.json, auth: auth, clock: clock)
+    }
+
     /// /ws/v1/push-to-talk。config 用 `.pushToTalk`
     public func pushToTalkSession(_ config: StreamConfig) -> PushToTalkSession {
         PushToTalkSession(urlSession: self.config.urlSession, url: wsURL("ws/v1/push-to-talk"), configJSON: json(config),

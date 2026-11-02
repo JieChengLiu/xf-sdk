@@ -38,6 +38,10 @@ public enum StreamEvent {
     /// 服务端在会话内报错，连接不一定断开
     case serverError(message: String, code: String?)
     case other(type: String, payload: [String: Any])
+    /// 双屏互译里属于某一侧的事件。side 是说话的一侧，targetSide 是译文显示和播放的一侧。
+    /// event 是实际内容（`.asrFinal`、`.translation`、`.ttsAudio` 等），流式翻译的中间结果是
+    /// type 为 translation_interim 的 `.other`。同一句的原文、译文、音频 utteranceId 相同，控制类事件为 nil。
+    indirect case dualScreen(side: DualScreenSide, targetSide: DualScreenSide, utteranceId: String?, event: StreamEvent)
 
     public struct WordTiming: Equatable {
         public let word: String

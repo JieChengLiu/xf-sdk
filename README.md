@@ -23,6 +23,7 @@
 | 拍照翻译 | `client.image.translate` |
 | 长音频转写（含摘要） | `client.transcription.*` |
 | 实时语音翻译 / 语音对话 | `client.voiceSession` |
+| 双屏互译（一台设备两块屏幕） | `client.dualScreenSession` |
 | 按住说话 | `client.pushToTalkSession` |
 | 只识别 / 只合成 / 只补全（流式） | `client.asrSession` / `ttsSession` / `llmSession` |
 | 多模态 / 实时语音大模型 | `client.multimodalSession` / `voiceLiveSession` |
@@ -49,7 +50,7 @@ dependencyResolutionManagement {
 
 ```kotlin
 dependencies {
-    implementation("com.xfusion.sdk:xf-sdk-core:0.3.1")
+    implementation("com.xfusion.sdk:xf-sdk-core:0.4.0")
 }
 ```
 
@@ -70,7 +71,7 @@ Xcode → File → Add Package Dependencies，填：
 https://github.com/JieChengLiu/xf-sdk
 ```
 
-版本选 `0.3.1` 或 Up to Next Minor，添加 `XfCore` 到你的 Target。用语音功能需要在 Info.plist 加 `NSMicrophoneUsageDescription`。
+版本选 `0.4.0` 或 Up to Next Minor，添加 `XfCore` 到你的 Target。用语音功能需要在 Info.plist 加 `NSMicrophoneUsageDescription`。
 
 ## 快速开始
 
@@ -256,6 +257,65 @@ for try await event in session.events {
 - **连续说话**：`start()` 后一直发音频，服务端按停顿自动断句，每句话依次返回识别结果和译文，直到 `stop()`。外放播报时建议用耳机或开启回声消除，避免播报被麦克风录回去。
 - **按住说话**：按下时 `start()`，松开时 `stop()`；也可以用 `pushToTalkSession`。
 
+### 双屏互译
+
+一台设备、两块屏幕的面对面互译：A、B 两侧走一条连接，每侧的翻译方向固定。连接后两侧自动开始收音，没有按键，也不用调 `start()`。
+
+```kotlin
+val config = DualScreenConfig("zh-CN", "en-US")
+    .tts(voiceA = "zh-CN-XiaoxiaoNeural", voiceB = "en-US-JennyNeural")   // A、B 两侧听到的音色，可省略
+    .outputFormat("pcm")
+val session = client.dualScreenSession(config, object : StreamListener {
+    override fun onEvent(event: StreamEvent) {
+        if (event !is StreamEvent.DualScreen) return
+        when (val inner = event.event) {
+            is StreamEvent.AsrFinal -> screen(event.side).showOriginal(event.utteranceId, inner.text)
+            is StreamEvent.Translation -> {
+                screen(event.side).showOriginal(event.utteranceId, inner.original)
+                screen(event.targetSide).showTranslation(event.utteranceId, inner.translated)
+            }
+            is StreamEvent.TtsAudio -> speaker(event.targetSide).enqueue(inner.audio)
+            StreamEvent.AudioInterrupt -> speaker(event.targetSide).flush()
+            else -> Unit
+        }
+    }
+    override fun onFailure(error: XfException) { /* 会话已不可用，需要新建 */ }
+})
+session.connect()
+recorderA.onPcm { session.sendPcm(DualScreenSide.A, it) }   // 两侧持续发送，包括没人说话的时候
+recorderB.onPcm { session.sendPcm(DualScreenSide.B, it) }
+```
+
+```swift
+var config = DualScreenConfig(languageA: "zh-CN", languageB: "en-US")
+config.tts(voiceA: "zh-CN-XiaoxiaoNeural", voiceB: "en-US-JennyNeural")
+config.outputFormat = "pcm"
+let session = client.dualScreenSession(config)   // 由 App 持有强引用，被释放时连接会断开
+session.connect()
+recorderA.onPCM { session.sendPCM(side: .a, $0) }
+recorderB.onPCM { session.sendPCM(side: .b, $0) }
+
+for try await event in session.events {
+    guard case .dualScreen(let side, let targetSide, let utteranceId, let inner) = event else { continue }
+    switch inner {
+    case .asrFinal(let text, _, _, _): screen(side).showOriginal(utteranceId, text)
+    case .translation(let original, let translated, _, _):
+        screen(side).showOriginal(utteranceId, original)
+        screen(targetSide).showTranslation(utteranceId, translated)
+    case .ttsAudio(_, _, let audio): speaker(targetSide).enqueue(audio)
+    case .audioInterrupt: speaker(targetSide).flush()
+    default: break
+    }
+}
+```
+
+- **事件归属**：属于某一侧的事件都包在 `DualScreen`（iOS：`.dualScreen`）里。`side` 是说话的一侧，`targetSide` 是译文显示和播放的一侧；同一句的原文、译文、音频 `utteranceId` 相同。`Ready` 和不带 side 的错误不包装。
+- **静音**：某一侧静音超过约 55 秒时，服务端会重置这一侧的识别，你会收到 `Stopped(no_speech_timeout)` 和随后的 `Started`，不需要处理，继续发音频即可。
+- **暂停**：屏幕熄灭等场景可以调 `stop(side)` 暂停，`start(side)` 恢复；不带 side 表示两侧。`interrupt(side)` 中断这一侧说话产生的译文播报。
+- **切换语言**：新建会话。
+- **回声和串音必须处理**：服务端不做回声消除，也不判断是谁在说话。麦克风拾到扬声器的译文会再被翻译一次，形成循环，所以要做回声消除；A 侧的话被 B 侧麦克风拾到会被当成 B 侧语言识别，所以要定向拾音或足够的物理隔离。
+- **用量**：两侧常开相当于两路识别，时长和费用按两路计算。
+
 ### 音频格式
 
 - **上行**：默认 PCM，16kHz / 16bit / 单声道 / 小端，建议每次发 20～100ms（20ms = 640 字节）。
@@ -303,6 +363,8 @@ recorder.onPCM { session.sendPCM(suppressor.process($0)) }
 | `voiceLive` | `voiceLiveSession` | `interrupt`、`syncMemories` |
 
 带音频的会话都有 `start`、`stop`、`sendPcm`、`sendOpus`；所有会话都有 `stop`、`close`。
+
+双屏互译单独用 `DualScreenConfig` 和 `dualScreenSession`，发音频和控制方法都要指定 side，见「双屏互译」。
 
 ### 事件
 
@@ -392,7 +454,12 @@ GitHub 仓库 https://github.com/JieChengLiu/xf-sdk 里：
 
 ## 版本
 
-当前版本 `0.3.1`。`0.x` 期间小版本可能有不兼容改动，升级前请查看更新说明。
+当前版本 `0.4.0`。`0.x` 期间小版本可能有不兼容改动，升级前请查看更新说明。
+
+### 0.4.0
+
+- 新增双屏互译 `dualScreenSession`（见「双屏互译」）。
+- **不兼容（iOS）**：`StreamEvent` 新增 `.dualScreen`，没写 `default` 的 `switch` 需要补上。
 
 ### 0.3.1
 

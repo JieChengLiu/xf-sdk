@@ -144,6 +144,25 @@ public class StreamSession {
         return frame
     }
 
+    // MARK: 下行帧的处理，协议不同的会话（如双屏互译）可以覆盖
+
+    func recordTTSMeta(_ meta: [String: Any]) {
+        lock.lock(); defer { lock.unlock() }
+        ttsMeta.append(meta)
+    }
+
+    /// 返回 nil 表示不下发
+    func audioEvent(_ data: Data) -> StreamEvent? {
+        lock.lock()
+        let meta = ttsMeta.isEmpty ? nil : ttsMeta.removeFirst()
+        lock.unlock()
+        return .ttsAudio(messageIndex: meta?.int64("messageIndex") ?? -1,
+                         chunkIndex: meta?.int64("indexId") ?? -1,
+                         audio: data)
+    }
+
+    func decorate(_ event: StreamEvent, json: [String: Any]) -> StreamEvent { event }
+
     static func encode(_ json: [String: Any]) -> String? {
         guard let data = try? JSONSerialization.data(withJSONObject: json) else { return nil }
         return String(data: data, encoding: .utf8)
@@ -202,24 +221,21 @@ public class StreamSession {
             switch json["type"] as? String {
             case "configOk": onReady(task)
             case "tts_chunk":
-                lock.lock(); ttsMeta.append(json); lock.unlock()
+                recordTTSMeta(json)
             case "error" where currentState == .connecting:
                 finish(XfError(kind: .protocol, message: json.str("message") ?? "session configuration failed"))
                 return
             default: break
             }
             guard let event = StreamEvent.parse(json) else { return }
-            continuation.yield(event)
+            continuation.yield(decorate(event, json: json))
             if case .toolCalls(let calls) = event, !tools.isEmpty {
                 handleToolCalls(calls)
             }
         case .data(let data):
-            lock.lock()
-            let meta = ttsMeta.isEmpty ? nil : ttsMeta.removeFirst()
-            lock.unlock()
-            continuation.yield(.ttsAudio(messageIndex: meta?.int64("messageIndex") ?? -1,
-                                         chunkIndex: meta?.int64("indexId") ?? -1,
-                                         audio: data))
+            if let event = audioEvent(data) {
+                continuation.yield(event)
+            }
         @unknown default:
             break
         }
