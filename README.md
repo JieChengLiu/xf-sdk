@@ -50,7 +50,7 @@ dependencyResolutionManagement {
 
 ```kotlin
 dependencies {
-    implementation("com.xfusion.sdk:xf-sdk-core:0.4.0")
+    implementation("com.xfusion.sdk:xf-sdk-core:0.5.0")
 }
 ```
 
@@ -71,7 +71,7 @@ Xcode → File → Add Package Dependencies，填：
 https://github.com/JieChengLiu/xf-sdk
 ```
 
-版本选 `0.4.0` 或 Up to Next Minor，添加 `XfCore` 到你的 Target。用语音功能需要在 Info.plist 加 `NSMicrophoneUsageDescription`。
+版本选 `0.5.0` 或 Up to Next Minor，添加 `XfCore` 到你的 Target。用语音功能需要在 Info.plist 加 `NSMicrophoneUsageDescription`。
 
 ## 快速开始
 
@@ -431,6 +431,7 @@ config.tools = [ClientTool(name: "volume_up", description: "用户想把声音�
 | `QUOTA_EXCEEDED` | 额度用完 | 提示用户或联系我们充值 |
 | `API_KEY_INVALID` | API Key 无效 / 已禁用 / 已过期（仅 API Key 方式） | 从你的服务端重新获取 key；仍失败联系我们 |
 | `INVALID_REQUEST` | 参数错误 | 检查参数 |
+| `RATE_LIMITED` | 服务端暂时限流（HTTP 429），请求没有被处理 | SDK 已按 `Retry-After` 自动重试最多 2 次；仍失败时等 `retryAfterSeconds` 秒再调。长音频转写里**不是任务失败**，继续用原 taskId 查询，不要重新建任务 |
 | `SERVER_ERROR` | 服务端异常 | 稍后重试 |
 | `NETWORK` | 网络错误 | 检查网络后重试 |
 | `PROTOCOL` | 响应格式异常、会话超时未就绪、流式回复被截断等 | 重试；流式对话已收到的文字会保留 |
@@ -454,7 +455,13 @@ GitHub 仓库 https://github.com/JieChengLiu/xf-sdk 里：
 
 ## 版本
 
-当前版本 `0.4.0`。`0.x` 期间小版本可能有不兼容改动，升级前请查看更新说明。
+当前版本 `0.5.0`。`0.x` 期间小版本可能有不兼容改动，升级前请查看更新说明。
+
+### 0.5.0
+
+- 服务端限流（HTTP 429）时，按 `Retry-After` 自动等待并重发，最多 2 次，单次最多等 10 秒；仍失败时抛 `RATE_LIMITED` / `.rateLimited`，并带上 `retryAfterSeconds`。主要影响长音频转写的状态和结果查询。
+- Android 的 `XfCall.cancel()` 也会取消正在等待中的自动重发。
+- **不兼容**：错误类型新增 `RATE_LIMITED`（iOS 为 `.rateLimited`）。Kotlin 里没写 `else` 的 `when` 表达式、Swift 里没写 `default` 的 `switch` 需要补上。
 
 ### 0.4.0
 

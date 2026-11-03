@@ -19,6 +19,10 @@ public struct XfError: Error, CustomStringConvertible {
         case quotaExceeded
         /// 参数校验失败
         case invalidRequest
+        /// 服务端暂时限流（HTTP 429），请求没有被处理。SDK 已按 Retry-After 自动重试过；
+        /// 仍失败时等 `retryAfterSeconds` 秒后再调。长音频转写里这不代表任务失败，继续用原 taskId 查询即可，
+        /// 不要重新建任务。
+        case rateLimited
         /// 服务端业务失败（上游厂商出错等）
         case serverError
         /// 网络不可达、超时、连接被断开
@@ -32,15 +36,25 @@ public struct XfError: Error, CustomStringConvertible {
     public let message: String
     public let serverCode: Int?
     public let underlying: Error?
+    /// `rateLimited` 时服务端要求的等待秒数（Retry-After），其他情况为 nil
+    public let retryAfterSeconds: Int?
 
-    public init(kind: Kind, message: String, serverCode: Int? = nil, underlying: Error? = nil) {
+    public init(kind: Kind, message: String, serverCode: Int? = nil, underlying: Error? = nil, retryAfterSeconds: Int? = nil) {
         self.kind = kind
         self.message = message
         self.serverCode = serverCode
         self.underlying = underlying
+        self.retryAfterSeconds = retryAfterSeconds
     }
 
-    public var description: String { "XfError(kind: \(kind), serverCode: \(serverCode.map(String.init) ?? "nil"), message: \(message))" }
+    public var description: String {
+        "XfError(kind: \(kind), serverCode: \(serverCode.map(String.init) ?? "nil"), message: \(message)"
+            + (retryAfterSeconds.map { ", retryAfterSeconds: \($0)" } ?? "") + ")"
+    }
+
+    static func rateLimited(_ message: String, retryAfterSeconds: Int?) -> XfError {
+        XfError(kind: .rateLimited, message: message, serverCode: 429, retryAfterSeconds: retryAfterSeconds ?? 1)
+    }
 
     /// 服务端目前只回中文 message、没有细分错误码，只能按文案归类，与 Android 的 XfException.fromServer 保持一致。
     /// 服务端补上结构化错误码之后改成按码映射。

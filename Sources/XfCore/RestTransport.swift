@@ -9,6 +9,11 @@ final class RestTransport {
     let clock: ServerClock
 
     private static let successCode = 200
+    private static let tooManyRequests = 429
+    /// 限流时最多自动重发几次
+    static let maxRateLimitRetries = 2
+    /// Retry-After 超过这个秒数就不自动等，交给接入方
+    static let maxAutoWaitSeconds = 10
 
     /// auth 为 nil 时不签名（设备注册接口）
     init(session: URLSession, baseURL: URL, auth: XfAuth?, clock: ServerClock) {
@@ -69,12 +74,38 @@ final class RestTransport {
 
     /// 发送并解析 Result 信封，返回 Result.data（对象、数组、布尔或 nil）。
     /// 报"请求已过期"时时钟已按响应 Date 头校准，换新签名重发一次。
+    /// 服务端限流（HTTP 429）时请求没有被处理，按 Retry-After 等待后换新签名重发，最多 `maxRateLimitRetries` 次；
+    /// 要求等待超过 `maxAutoWaitSeconds` 秒时不等，直接抛 `.rateLimited`，由接入方安排下一次调用。
     func result(_ request: URLRequest) async throws -> Any? {
-        do {
-            return try await resultOnce(request)
-        } catch let error as XfError where error.kind == .clockSkew {
-            return try await resultOnce(request)
+        var skewRetried = false
+        var rateLimitRetries = 0
+        while true {
+            do {
+                return try await resultOnce(request)
+            } catch let error as XfError where error.kind == .clockSkew && !skewRetried {
+                skewRetried = true
+            } catch let error as XfError where error.kind == .rateLimited
+                        && rateLimitRetries < Self.maxRateLimitRetries
+                        && (error.retryAfterSeconds ?? 1) <= Self.maxAutoWaitSeconds {
+                rateLimitRetries += 1
+                try await Self.wait(seconds: error.retryAfterSeconds ?? 1)
+            }
         }
+    }
+
+    private static func wait(seconds: Int) async throws {
+        do {
+            try await Task.sleep(nanoseconds: UInt64(seconds) * 1_000_000_000)
+        } catch {
+            throw XfError(kind: .canceled, message: "canceled", underlying: error)
+        }
+    }
+
+    /// 服务端只发秒数；缺失或无法解析时返回 nil，由调用方取默认值
+    static func retryAfterSeconds(_ response: HTTPURLResponse?) -> Int? {
+        guard let value = response?.value(forHTTPHeaderField: "Retry-After"),
+              let seconds = Int(value.trimmingCharacters(in: .whitespaces)) else { return nil }
+        return max(1, seconds)
     }
 
     func object(_ request: URLRequest) async throws -> [String: Any] {
@@ -85,10 +116,14 @@ final class RestTransport {
     }
 
     private func resultOnce(_ request: URLRequest) async throws -> Any? {
-        let json = try await jsonObject(signed(request))
+        let (json, http) = try await jsonObjectAndResponse(signed(request))
         let code = (json["code"] as? NSNumber)?.intValue
         guard code == Self.successCode else {
-            throw XfError.fromServer(code: code, message: json["message"] as? String ?? "unknown error")
+            let message = json["message"] as? String ?? "unknown error"
+            if http?.statusCode == Self.tooManyRequests || code == Self.tooManyRequests {
+                throw XfError.rateLimited(message, retryAfterSeconds: Self.retryAfterSeconds(http))
+            }
+            throw XfError.fromServer(code: code, message: message)
         }
         let data = json["data"]
         return data is NSNull ? nil : data
@@ -96,13 +131,21 @@ final class RestTransport {
 
     /// 发送已签名的请求，响应体按 JSON 对象解析（不看 Result 信封）
     func jsonObject(_ request: URLRequest) async throws -> [String: Any] {
+        try await jsonObjectAndResponse(request).0
+    }
+
+    private func jsonObjectAndResponse(_ request: URLRequest) async throws -> ([String: Any], HTTPURLResponse?) {
         let (data, response) = try await send(request)
         clock.observe(response: response)
+        let http = response as? HTTPURLResponse
         if let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
-            return json
+            return (json, http)
         }
         let text = String(data: data.prefix(200), encoding: .utf8) ?? ""
-        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+        if let http = http, http.statusCode == Self.tooManyRequests {
+            throw XfError.rateLimited("HTTP 429: \(text)", retryAfterSeconds: Self.retryAfterSeconds(http))
+        }
+        if let http = http, !(200..<300).contains(http.statusCode) {
             throw XfError(kind: .serverError, message: "HTTP \(http.statusCode): \(text)", serverCode: http.statusCode)
         }
         throw XfError(kind: .protocol, message: "response is not a JSON object: \(text)")
