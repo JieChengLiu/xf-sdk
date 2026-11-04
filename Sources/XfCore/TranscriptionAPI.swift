@@ -111,6 +111,12 @@ public struct TranscriptionRequest {
     public var summaryLanguage: String?
     /// 需要译文时填目标语言
     public var translateLanguage: String?
+    /// 每个分段也附带译文（segments[].translatedText），需同时设置 translateLanguage，默认不开
+    public var translateSegments: Bool?
+    /// 自定义总结模板（JSON 对象），传入后额外生成 type=custom 的总结，结构见接口文档 summaryTemplate
+    public var summaryTemplate: [String: Any]?
+    /// 总结模型：gpt-5.4-nano / gpt-6-luna，不传使用默认
+    public var summaryModel: String?
     /// 完成后服务端回调你自己的服务端
     public var callbackUrl: String?
     /// 要转录的声道，0 左、1 右，不传则两个声道都转。左右内容相同的立体声传 [0]，否则同一段话会出现两遍；
@@ -133,6 +139,9 @@ public struct TranscriptionRequest {
         json["summaryTypes"] = summaryTypes
         json["summaryLanguage"] = summaryLanguage
         json["translateLanguage"] = translateLanguage
+        json["translateSegments"] = translateSegments
+        json["summaryTemplate"] = summaryTemplate
+        json["summaryModel"] = summaryModel
         json["callbackUrl"] = callbackUrl
         json["channels"] = channels
         return json
@@ -149,6 +158,11 @@ public struct TranscriptionRequest {
         summaryTypes?.forEach { fields.append(("summaryTypes", $0)) }
         if let v = summaryLanguage { fields.append(("summaryLanguage", v)) }
         if let v = translateLanguage { fields.append(("translateLanguage", v)) }
+        if let v = translateSegments { fields.append(("translateSegments", String(v))) }
+        // multipart 只能传字符串，模板序列化成 JSON 字符串
+        if let v = summaryTemplate, let data = try? JSONSerialization.data(withJSONObject: v),
+           let s = String(data: data, encoding: .utf8) { fields.append(("summaryTemplate", s)) }
+        if let v = summaryModel { fields.append(("summaryModel", v)) }
         if let v = callbackUrl { fields.append(("callbackUrl", v)) }
         channels?.forEach { fields.append(("channels", String($0))) }
         return fields
@@ -204,6 +218,8 @@ public struct TranscriptionResult {
         public let endTime: Double?
         public let language: String?
         public let text: String
+        /// 该分段译文，仅 translateSegments=true 时返回
+        public let translatedText: String?
     }
 
     public let taskId: String?
@@ -227,7 +243,8 @@ public struct TranscriptionResult {
         translatedLanguage = json.str("translatedLanguage")
         segments = json.objects("segments").map {
             Segment(speaker: $0.str("speaker"), startTime: $0.double("startTime"), endTime: $0.double("endTime"),
-                    language: $0.str("language"), text: $0["text"] as? String ?? "")
+                    language: $0.str("language"), text: $0["text"] as? String ?? "",
+                    translatedText: $0.str("translatedText"))
         }
     }
 }

@@ -50,7 +50,7 @@ dependencyResolutionManagement {
 
 ```kotlin
 dependencies {
-    implementation("com.xfusion.sdk:xf-sdk-core:0.5.0")
+    implementation("com.xfusion.sdk:xf-sdk-core:0.6.0")
 }
 ```
 
@@ -71,7 +71,7 @@ Xcode → File → Add Package Dependencies，填：
 https://github.com/JieChengLiu/xf-sdk
 ```
 
-版本选 `0.5.0` 或 Up to Next Minor，添加 `XfCore` 到你的 Target。用语音功能需要在 Info.plist 加 `NSMicrophoneUsageDescription`。
+版本选 `0.6.0` 或 Up to Next Minor，添加 `XfCore` 到你的 Target。用语音功能需要在 Info.plist 加 `NSMicrophoneUsageDescription`。
 
 ## 快速开始
 
@@ -190,6 +190,18 @@ val mono = TranscriptionRequest("会议", "zh-CN", "mp3", channels = listOf(0))
 ```
 
 `channels`（iOS 同名）用来选择要转录的声道，`0` 是左声道，`1` 是右声道，不传则两个声道都转。人声只在右声道时传 `1`；左右各录一人的通话录音或不确定时不要传，否则可能丢内容。单声道文件会忽略此参数。
+
+```kotlin
+// 每个分段带译文：segments[i] 同时有 speaker、startTime/endTime、text（原文）、translatedText（译文）
+val bilingual = TranscriptionRequest("会议", "zh-CN", "m4a", enableSpeakerDiarization = true,
+    translateLanguage = "en-US", translateSegments = true)
+
+// 自定义总结模板 + 指定总结模型，结果在 summary 的 type = "custom" 一项里
+val template = JSONObject("""{"sections":[{"title":"客户需求","format":"bullet"},{"title":"下一步计划","instruction":"写明负责人和时间"}]}""")
+val custom = TranscriptionRequest("拜访", "zh-CN", "m4a", summaryTemplate = template, summaryModel = "gpt-6-luna")
+```
+
+`translateSegments` 需要同时传 `translateLanguage`，分段译文在转写完成后异步生成，刚完成时可能还没有，需要继续轮询。`summaryTemplate` 的字段（`sections[].title / instruction / maxLength / format`、顶层 `maxLength`）和限制见服务端接口文档「长音频转写 · 自定义总结模板」；iOS 传 `[String: Any]`。`summaryModel` 只能是 `gpt-5.4-nano` 或 `gpt-6-luna`，其他值创建任务会失败。
 
 ```swift
 let text = try await client.translate.text("你好", from: "zh-Hans", to: "en").text
@@ -455,7 +467,13 @@ GitHub 仓库 https://github.com/JieChengLiu/xf-sdk 里：
 
 ## 版本
 
-当前版本 `0.5.0`。`0.x` 期间小版本可能有不兼容改动，升级前请查看更新说明。
+当前版本 `0.6.0`。`0.x` 期间小版本可能有不兼容改动，升级前请查看更新说明。
+
+### 0.6.0
+
+- `TranscriptionRequest` 新增可选的 `translateSegments`：配合 `translateLanguage`，转写结果的每个分段多一个 `translatedText`（`TranscriptionResult.Segment.translatedText`）。
+- `TranscriptionRequest` 新增可选的 `summaryTemplate`（自定义总结模板，生成 `type=custom` 的总结）和 `summaryModel`（`gpt-5.4-nano` / `gpt-6-luna`）。
+- 均为新增的可选字段，不传时行为不变。
 
 ### 0.5.0
 
