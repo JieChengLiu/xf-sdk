@@ -184,6 +184,31 @@ final class RestHelperTests: XCTestCase {
         XCTAssertEqual(request.formFields().filter { $0.0 == "channels" }.map { $0.1 }, ["1"])
     }
 
+    func testTranscriptionWordTimestampsRequestAndParsing() {
+        var request = TranscriptionRequest(taskName: "课堂", sourceLanguage: "zh-CN", audioFormat: "wav")
+        XCTAssertNil(request.json()["wordTimestamps"])
+        XCTAssertFalse(request.formFields().contains { $0.0 == "wordTimestamps" })
+
+        request.wordTimestamps = true
+        XCTAssertEqual(request.json()["wordTimestamps"] as? Bool, true)
+        XCTAssertEqual(request.formFields().filter { $0.0 == "wordTimestamps" }.map { $0.1 }, ["true"])
+
+        let result = TranscriptionResult([
+            "text": "你好，",
+            "segments": [
+                ["text": "你好，", "startTime": 0.08, "endTime": 0.56, "words": [
+                    ["text": "你", "startTime": 0.08, "endTime": 0.24],
+                    ["text": "好，", "startTime": 0.24, "endTime": 0.56],
+                ]],
+                ["text": "无词级", "startTime": 1.0, "endTime": 2.0],
+            ],
+        ])
+        XCTAssertEqual(result.segments[0].words?.map { $0.text }, ["你", "好，"])
+        XCTAssertEqual(result.segments[0].words?[1].startTime, 0.24)
+        XCTAssertEqual(result.segments[0].words?[1].endTime, 0.56)
+        XCTAssertNil(result.segments[1].words)
+    }
+
     func testChatCompletionRejectsResultEnvelope() {
         XCTAssertThrowsError(try ChatAPI.checkCompletion(["code": NSNumber(value: 500), "message": "鉴权失败: 设备未激活"])) { error in
             XCTAssertEqual((error as? XfError)?.kind, .deviceInactive)

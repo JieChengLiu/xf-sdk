@@ -122,6 +122,9 @@ public struct TranscriptionRequest {
     /// 要转录的声道，0 左、1 右，不传则两个声道都转。左右内容相同的立体声传 [0]，否则同一段话会出现两遍；
     /// 人声只在右声道时传 [1]；左右各录一人的通话录音或不确定时不要传
     public var channels: [Int]?
+    /// 返回逐词时间戳（segments[].words），用于逐词高亮、点词跳播，默认不开。
+    /// 只能建任务时决定；长录音词数多、结果体会变大，不需要就别开
+    public var wordTimestamps: Bool?
 
     public init(taskName: String, sourceLanguage: String, audioFormat: String) {
         self.taskName = taskName
@@ -144,6 +147,7 @@ public struct TranscriptionRequest {
         json["summaryModel"] = summaryModel
         json["callbackUrl"] = callbackUrl
         json["channels"] = channels
+        json["wordTimestamps"] = wordTimestamps
         return json
     }
 
@@ -165,6 +169,7 @@ public struct TranscriptionRequest {
         if let v = summaryModel { fields.append(("summaryModel", v)) }
         if let v = callbackUrl { fields.append(("callbackUrl", v)) }
         channels?.forEach { fields.append(("channels", String($0))) }
+        if let v = wordTimestamps { fields.append(("wordTimestamps", String(v))) }
         return fields
     }
 }
@@ -220,6 +225,15 @@ public struct TranscriptionResult {
         public let text: String
         /// 该分段译文，仅 translateSegments=true 时返回
         public let translatedText: String?
+        /// 逐词时间戳，仅 wordTimestamps=true 时返回；只对应原文 text，拼起来即 text
+        public let words: [Word]?
+    }
+
+    /// 单个词（中文为单字，标点附在前一个词上），时间单位秒，相对整段音频开头
+    public struct Word {
+        public let text: String
+        public let startTime: Double?
+        public let endTime: Double?
     }
 
     public let taskId: String?
@@ -244,7 +258,11 @@ public struct TranscriptionResult {
         segments = json.objects("segments").map {
             Segment(speaker: $0.str("speaker"), startTime: $0.double("startTime"), endTime: $0.double("endTime"),
                     language: $0.str("language"), text: $0["text"] as? String ?? "",
-                    translatedText: $0.str("translatedText"))
+                    translatedText: $0.str("translatedText"),
+                    words: ($0["words"] as? [[String: Any]])?.map {
+                        Word(text: $0["text"] as? String ?? "", startTime: $0.double("startTime"),
+                             endTime: $0.double("endTime"))
+                    })
         }
     }
 }

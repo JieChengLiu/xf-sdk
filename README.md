@@ -50,7 +50,7 @@ dependencyResolutionManagement {
 
 ```kotlin
 dependencies {
-    implementation("com.xfusion.sdk:xf-sdk-core:0.6.0")
+    implementation("com.xfusion.sdk:xf-sdk-core:0.6.1")
 }
 ```
 
@@ -71,7 +71,7 @@ Xcode → File → Add Package Dependencies，填：
 https://github.com/JieChengLiu/xf-sdk
 ```
 
-版本选 `0.6.0` 或 Up to Next Minor，添加 `XfCore` 到你的 Target。用语音功能需要在 Info.plist 加 `NSMicrophoneUsageDescription`。
+版本选 `0.6.1` 或 Up to Next Minor，添加 `XfCore` 到你的 Target。用语音功能需要在 Info.plist 加 `NSMicrophoneUsageDescription`。
 
 ## 快速开始
 
@@ -199,7 +199,13 @@ val bilingual = TranscriptionRequest("会议", "zh-CN", "m4a", enableSpeakerDiar
 // 自定义总结模板 + 指定总结模型，结果在 summary 的 type = "custom" 一项里
 val template = JSONObject("""{"sections":[{"title":"客户需求","format":"bullet"},{"title":"下一步计划","instruction":"写明负责人和时间"}]}""")
 val custom = TranscriptionRequest("拜访", "zh-CN", "m4a", summaryTemplate = template, summaryModel = "gpt-6-luna")
+
+// 逐词时间戳：segments[i].words 是 [{text, startTime, endTime}]，用于播放时逐词高亮、点词跳播
+val karaoke = TranscriptionRequest("课堂", "zh-CN", "m4a", wordTimestamps = true)
+result.segments.forEach { seg -> seg.words?.forEach { w -> println("${w.startTime}-${w.endTime} ${w.text}") } }
 ```
+
+`wordTimestamps`（iOS 同名）默认不开，只能在建任务时决定，没开的任务拿不到词级时间，`words` 为 null。词跟 `text` 一致，带标点、数字写成阿拉伯数字：中文一字一个词、标点附在前一个字上（如 `好，`），直接拼接就是原文；英文等有空格的语言按词切分，用空格连接。只有原文有词级时间，`translatedText` 没有。长录音词数很多（1 小时约上万词），结果体会大好几倍，不需要就别开。
 
 `translateSegments` 需要同时传 `translateLanguage`，分段译文在转写完成后异步生成，刚完成时可能还没有，需要继续轮询。`summaryTemplate` 的字段（`sections[].title / instruction / maxLength / format`、顶层 `maxLength`）和限制见服务端接口文档「长音频转写 · 自定义总结模板」；iOS 传 `[String: Any]`。`summaryModel` 只能是 `gpt-5.4-nano` 或 `gpt-6-luna`，其他值创建任务会失败。
 
@@ -467,7 +473,12 @@ GitHub 仓库 https://github.com/JieChengLiu/xf-sdk 里：
 
 ## 版本
 
-当前版本 `0.6.0`。`0.x` 期间小版本可能有不兼容改动，升级前请查看更新说明。
+当前版本 `0.6.1`。`0.x` 期间小版本可能有不兼容改动，升级前请查看更新说明。
+
+### 0.6.1
+
+- `TranscriptionRequest` 新增可选的 `wordTimestamps`：开启后转写结果每个分段多一个 `words`（`TranscriptionResult.Segment.words`，元素为 `Word(text, startTime, endTime)`），用于逐词高亮、点词跳播。
+- 新增的可选字段，不传时行为不变。
 
 ### 0.6.0
 
