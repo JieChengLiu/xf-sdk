@@ -50,7 +50,7 @@ dependencyResolutionManagement {
 
 ```kotlin
 dependencies {
-    implementation("com.xfusion.sdk:xf-sdk-core:0.6.1")
+    implementation("com.xfusion.sdk:xf-sdk-core:0.6.2")
 }
 ```
 
@@ -71,7 +71,7 @@ Xcode → File → Add Package Dependencies，填：
 https://github.com/JieChengLiu/xf-sdk
 ```
 
-版本选 `0.6.1` 或 Up to Next Minor，添加 `XfCore` 到你的 Target。用语音功能需要在 Info.plist 加 `NSMicrophoneUsageDescription`。
+版本选 `0.6.2` 或 Up to Next Minor，添加 `XfCore` 到你的 Target。用语音功能需要在 Info.plist 加 `NSMicrophoneUsageDescription`。
 
 ## 快速开始
 
@@ -205,7 +205,7 @@ val karaoke = TranscriptionRequest("课堂", "zh-CN", "m4a", wordTimestamps = tr
 result.segments.forEach { seg -> seg.words?.forEach { w -> println("${w.startTime}-${w.endTime} ${w.text}") } }
 ```
 
-`wordTimestamps`（iOS 同名）默认不开，只能在建任务时决定，没开的任务拿不到词级时间，`words` 为 null。词跟 `text` 一致，带标点、数字写成阿拉伯数字：中文一字一个词、标点附在前一个字上（如 `好，`），直接拼接就是原文；英文等有空格的语言按词切分，用空格连接。只有原文有词级时间，`translatedText` 没有。长录音词数很多（1 小时约上万词），结果体会大好几倍，不需要就别开。
+`wordTimestamps`（iOS 同名，SDK 0.6.1 起支持）默认不开，只能在建任务时决定，没开的任务不能事后补取词级时间：JSON 不包含 `words`，SDK 中为 null / nil。`words[].startTime / endTime` 单位为秒，相对整段音频开头，保留两位小数；时间缺失时可为 null。词跟 `text` 一致，带标点、数字写成阿拉伯数字：中文通常按单字切分、标点附在前一个字上（如 `好，`），直接拼接就是原文；英文等有空格的语言按词切分，用空格连接。只有原文有词级时间，`translatedText` 没有。转写完成回调的 `result.segments[].words` 与查询结果一致。长录音词数多，开启后结果体会明显增大，不需要就保持关闭。
 
 `translateSegments` 需要同时传 `translateLanguage`，分段译文在转写完成后异步生成，刚完成时可能还没有，需要继续轮询。`summaryTemplate` 的字段（`sections[].title / instruction / maxLength / format`、顶层 `maxLength`）和限制见服务端接口文档「长音频转写 · 自定义总结模板」；iOS 传 `[String: Any]`。`summaryModel` 只能是 `gpt-5.4-nano` 或 `gpt-6-luna`，其他值创建任务会失败。
 
@@ -340,6 +340,30 @@ for try await event in session.events {
   也可以发 Opus：config 设 `audioFormat(StreamConfig.AudioFormat.OPUS)`（iOS：`config.audioFormat = .opus`），每个 Opus 包调一次 `sendOpus`。
 - **下行播报**：默认 mp3 分片。需要边收边播时，在 config 里设 `outputFormat("pcm")`（iOS：`config.outputFormat = "pcm"`），
   收到的是 16kHz / 16bit / 单声道 PCM，可以直接写进 AudioTrack / AVAudioPlayerNode。
+  PCM 每秒约 32KB，网络慢时播报音频会把后面的识别、译文消息挤在后面；带宽紧张时用压缩格式：
+  - `outputFormat("ogg")`：标准 Ogg Opus 流，每秒约 8KB，用常规 Ogg Opus 解码器即可。
+  - `outputFormat("opus")`：Opus 裸流，每秒约 4KB。**一个音频分片里是多个 80 字节的 Opus 包首尾相接，没有长度前缀**，
+    整块当一个包解码只会得到前 20ms。用 `RawOpusPacketSplitter` 切包后逐个解码（16kHz / 单声道），每路 TTS 流各用一个，
+    双屏 A、B 各一个。
+    - `framesPerPacket` 默认 1：每包 20ms，解码一次得到 320 个采样。
+    - 解码调用有固定开销（例如通过 JNI 调 libopus）时，设 `framesPerPacket = 4`：SDK 把每 4 帧按 Opus 标准组装成一个 80ms 的包，
+      解码一次得到 1280 个采样，调用次数降到 1/4。只重排帧不重新编码，声音与逐包解码完全一致。最大 6（120ms）。
+      **解码输出缓冲至少要 `framesPerPacket × 320` 个采样**（4 帧 = 1280），按 320 分配会解码失败；不确定时按 Opus 上限 5760 分配。
+    - 收到 `TtsComplete` 时调 `flush()` 取出句尾不足一组的帧；收到 `AudioInterrupt` 时调 `reset()`。
+
+    ```kotlin
+    val splitter = RawOpusPacketSplitter(framesPerPacket = 4)
+    is StreamEvent.TtsAudio -> splitter.feed(event.audio).forEach { packet -> player.playOpusPacket(packet) }
+    is StreamEvent.TtsComplete -> splitter.flush().forEach { packet -> player.playOpusPacket(packet) }
+    is StreamEvent.AudioInterrupt -> { splitter.reset(); player.flush() }
+    ```
+
+    ```swift
+    let splitter = RawOpusPacketSplitter(framesPerPacket: 4)
+    case .ttsAudio(_, _, let audio): splitter.feed(audio).forEach { player.playOpusPacket($0) }
+    case .ttsComplete: splitter.flush().forEach { player.playOpusPacket($0) }
+    case .audioInterrupt: splitter.reset(); player.flush()
+    ```
 
 SDK 不包含录音和播放，由 App 用系统 API 实现（Android `AudioRecord` / `AudioTrack`，iOS `AVAudioEngine`）。
 
@@ -473,7 +497,13 @@ GitHub 仓库 https://github.com/JieChengLiu/xf-sdk 里：
 
 ## 版本
 
-当前版本 `0.6.1`。`0.x` 期间小版本可能有不兼容改动，升级前请查看更新说明。
+当前版本 `0.6.2`。`0.x` 期间小版本可能有不兼容改动，升级前请查看更新说明。
+
+### 0.6.2
+
+- 新增 `RawOpusPacketSplitter`（Android / iOS 同名）：把 `outputFormat = "opus"` 的 TTS 裸流切成 Opus 包，用于逐包解码、边收边播。分片边界不是 80 的整数倍时会自动跨分片拼接。
+- `framesPerPacket` 可把多帧组装成一包（如 4 帧 = 80ms），减少解码调用次数；配合 `flush()` 取出句尾余数。
+- 纯新增工具类，现有事件和接口不变。
 
 ### 0.6.1
 
