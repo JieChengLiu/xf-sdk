@@ -50,7 +50,7 @@ dependencyResolutionManagement {
 
 ```kotlin
 dependencies {
-    implementation("com.xfusion.sdk:xf-sdk-core:0.6.2")
+    implementation("com.xfusion.sdk:xf-sdk-core:0.6.3")
 }
 ```
 
@@ -71,7 +71,7 @@ Xcode → File → Add Package Dependencies，填：
 https://github.com/JieChengLiu/xf-sdk
 ```
 
-版本选 `0.6.2` 或 Up to Next Minor，添加 `XfCore` 到你的 Target。用语音功能需要在 Info.plist 加 `NSMicrophoneUsageDescription`。
+版本选 `0.6.3` 或 Up to Next Minor，添加 `XfCore` 到你的 Target。用语音功能需要在 Info.plist 加 `NSMicrophoneUsageDescription`。
 
 ## 快速开始
 
@@ -350,12 +350,23 @@ for try await event in session.events {
       解码一次得到 1280 个采样，调用次数降到 1/4。只重排帧不重新编码，声音与逐包解码完全一致。最大 6（120ms）。
       **解码输出缓冲至少要 `framesPerPacket × 320` 个采样**（4 帧 = 1280），按 320 分配会解码失败；不确定时按 Opus 上限 5760 分配。
     - 收到 `TtsComplete` 时调 `flush()` 取出句尾不足一组的帧；收到 `AudioInterrupt` 时调 `reset()`。
+    - **Android 构造函数的第一个参数是 `packetBytes`，不是 `framesPerPacket`**。Kotlin 要写参数名；
+      Java 用 `RawOpusPacketSplitter.withFramesPerPacket(4)`。`new RawOpusPacketSplitter(4)` 会切出 4 字节碎包，
+      播放会乱、听起来像加速，从 0.6.3 起这样写会直接抛 `IllegalArgumentException`。
+    - 解码器和播放器都用 16000Hz、单声道；采样率或声道对不上同样会变快。自查方法：一句话解出的采样数应等于 帧数 × 320。
+    - 完整参考实现（Concentus 纯 Java 解码 → AudioTrack）：demo 里的 `OpusTtsDecoder.kt`，勾选「播报用 Opus 下发」即可试听。
 
     ```kotlin
     val splitter = RawOpusPacketSplitter(framesPerPacket = 4)
     is StreamEvent.TtsAudio -> splitter.feed(event.audio).forEach { packet -> player.playOpusPacket(packet) }
     is StreamEvent.TtsComplete -> splitter.flush().forEach { packet -> player.playOpusPacket(packet) }
     is StreamEvent.AudioInterrupt -> { splitter.reset(); player.flush() }
+    ```
+
+    ```java
+    RawOpusPacketSplitter splitter = RawOpusPacketSplitter.withFramesPerPacket(4); // 不要写 new RawOpusPacketSplitter(4)
+    short[] pcm = new short[5760];                                               // 按 Opus 上限分配
+    int samples = decoder.decode(packet, 0, packet.length, pcm, 0, pcm.length, false);
     ```
 
     ```swift
@@ -497,7 +508,14 @@ GitHub 仓库 https://github.com/JieChengLiu/xf-sdk 里：
 
 ## 版本
 
-当前版本 `0.6.2`。`0.x` 期间小版本可能有不兼容改动，升级前请查看更新说明。
+当前版本 `0.6.3`。`0.x` 期间小版本可能有不兼容改动，升级前请查看更新说明。
+
+### 0.6.3
+
+- Android `RawOpusPacketSplitter` 防误用：构造函数第一个参数是 `packetBytes`，`new RawOpusPacketSplitter(4)`（本意每包 4 帧）以前会切成 4 字节碎包、播放错乱像加速，现在 `packetBytes < 8` 直接抛 `IllegalArgumentException` 并提示正确写法。
+- 新增 `RawOpusPacketSplitter.withFramesPerPacket(n)`，供 Java 指定每包帧数。
+- Android demo 新增 Opus 播报（`OpusTtsDecoder.kt`：切包 → Concentus 解码 → AudioTrack），勾选「播报用 Opus 下发」即可试听，日志会打出每句的解码时长用于核对。
+- iOS 无改动（Swift 必须写参数名，不存在这个问题）。
 
 ### 0.6.2
 

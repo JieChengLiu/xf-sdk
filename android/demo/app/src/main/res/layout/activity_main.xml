@@ -50,6 +50,7 @@
                 <Button android:id="@+id/btnHangup" android:layout_width="0dp" android:layout_weight="1" android:layout_height="64dp" android:text="断开" />
             </LinearLayout>
             <Button android:id="@+id/btnFakeMic" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="用合成语音测试（不用麦克风）" />
+            <CheckBox android:id="@+id/opusTts" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="播报用 Opus 下发（demo 内解码后播放）" />
             <TextView android:id="@+id/micLevel" android:layout_width="match_parent" android:layout_height="wrap_content" android:textColor="#777777" android:text="麦克风电平：-" />
             <TextView android:id="@+id/partial" android:layout_width="match_parent" android:layout_height="wrap_content" android:minLines="2" android:textColor="#777777" android:hint="实时识别结果" />
         </LinearLayout>

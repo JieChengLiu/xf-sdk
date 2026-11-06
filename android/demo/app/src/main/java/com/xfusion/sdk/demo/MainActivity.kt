@@ -11,6 +11,7 @@ import android.os.Handler
 import android.os.Looper
 import android.view.MotionEvent
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.ScrollView
 import android.widget.TextView
@@ -59,6 +60,8 @@ class MainActivity : Activity() {
     private lateinit var logView: TextView
     private lateinit var logScroll: ScrollView
     private lateinit var liveButton: Button
+    /** 勾选后会话 outputFormat = "opus"，TTS 先经 OpusTtsDecoder 解成 PCM 再播 */
+    private lateinit var opusTts: CheckBox
     /** 实时模式：开始后一直收音，服务端按停顿自动断句、逐句翻译，直到再点一次 */
     private var live = false
 
@@ -116,6 +119,14 @@ class MainActivity : Activity() {
         liveButton = findViewById(R.id.btnLive)
         liveButton.setOnClickListener { toggleLive() }
         findViewById<Button>(R.id.btnFakeMic).setOnClickListener { testWithSynthesizedSpeech() }
+        opusTts = findViewById(R.id.opusTts)
+        // 下发格式是建会话时定的，切换后断开，下次说话按新格式重连
+        opusTts.setOnCheckedChangeListener { _, checked ->
+            if (session != null) {
+                hangUp()
+                log("播报格式改为 ${if (checked) "opus" else "pcm"}，已断开，下次说话自动重连")
+            }
+        }
 
         if (deviceId.text.isNotBlank() && secret.text.isNotBlank()) initClient()
     }
@@ -401,13 +412,15 @@ class MainActivity : Activity() {
         session?.let { return it }
         val c = requireClient() ?: return null
         val voice = voiceName.value()
+        val opus = opusTts.isChecked
         val config = StreamConfig.voiceTranslation(fromLang.value(), toLang.value()).apply {
             if (voice.isNotEmpty()) tts(voice)
-            // 下发原始 PCM，PcmPlayer 直接播；默认是 mp3
-            outputFormat("pcm")
+            // pcm：PcmPlayer 直接播；opus：裸流，先解码再播（默认是 mp3）
+            outputFormat(if (opus) "opus" else "pcm")
         }
-        log("连接语音翻译 ${fromLang.value()} → ${toLang.value()}，播报 ${voice.ifEmpty { "关" }}")
-        val listener = VoiceListener()
+        log("连接语音翻译 ${fromLang.value()} → ${toLang.value()}，播报 ${voice.ifEmpty { "关" }}" +
+            if (opus) "（Opus）" else "")
+        val listener = VoiceListener(if (opus) OpusTtsDecoder() else null)
         val s = c.voiceSession(config, listener)
         listener.owner = s
         session = s
@@ -422,7 +435,8 @@ class MainActivity : Activity() {
         session = null
     }
 
-    private inner class VoiceListener : StreamListener {
+    /** opus 非空时 TTS 是 Opus 裸流，每个会话一个解码器 */
+    private inner class VoiceListener(private val opus: OpusTtsDecoder?) : StreamListener {
         var owner: VoiceSession? = null
         private var ttsBytes = 0
 
@@ -433,13 +447,24 @@ class MainActivity : Activity() {
                 is StreamEvent.Translation -> log("译文：${event.translated}")
                 is StreamEvent.TtsAudio -> {
                     ttsBytes += event.audio.size
-                    player.enqueue(event.audio)
+                    player.enqueue(opus?.feed(event.audio) ?: event.audio)
                 }
                 is StreamEvent.TtsComplete -> {
-                    log("播报音频 ${ttsBytes / 32} ms（$ttsBytes 字节）")
+                    if (opus == null) {
+                        log("播报音频 ${ttsBytes / 32} ms（$ttsBytes 字节）")
+                    } else {
+                        player.enqueue(opus.flush())
+                        // 采样数 / 16 = 毫秒；跟实际听到的时长对得上，说明解码没丢帧
+                        log("播报 Opus ${opus.sentencePackets} 包 → ${opus.sentenceSamples / 16} ms" +
+                            "（$ttsBytes 字节" + (if (opus.sentenceErrors > 0) "，解码失败 ${opus.sentenceErrors} 包" else "") + "）")
+                        opus.resetStats()
+                    }
                     ttsBytes = 0
                 }
-                StreamEvent.AudioInterrupt -> player.flush()
+                StreamEvent.AudioInterrupt -> {
+                    opus?.reset()
+                    player.flush()
+                }
                 StreamEvent.Ready -> log("会话就绪")
                 is StreamEvent.ServerError -> log("服务端错误：${event.message} code=${event.code}")
                 StreamEvent.TtsEnd -> Unit
@@ -490,6 +515,8 @@ class MainActivity : Activity() {
 
     private fun log(message: String) {
         val time = SimpleDateFormat("HH:mm:ss.SSS", Locale.US).format(Date())
+        // 同时进 logcat（tag XfDemo），方便 adb logcat 抓日志排查
+        android.util.Log.i("XfDemo", message)
         logView.append("$time  $message\n")
         logScroll.post { logScroll.fullScroll(ScrollView.FOCUS_DOWN) }
     }
