@@ -1,7 +1,7 @@
 import Foundation
 
 /// WebSocket 会话的 config 消息，所有 /ws/v1/* 口子共用（服务端都解析成同一个 RequestParam）。
-/// 用对应口子的预设创建，再按需改字段；协议新增字段可先用 `extra` / `ext` 透传。字段与 Android 的 StreamConfig 一一对应。
+/// 一般用对应口子的预设创建再按需改字段，也可以 `StreamConfig()` 从空配置自己填；协议新增字段可先用 `extra` / `ext` 透传。字段与 Android 的 StreamConfig 一一对应。
 ///
 /// | 预设 | 口子 | 用于 |
 /// |---|---|---|
@@ -56,7 +56,8 @@ public struct StreamConfig {
     public var ext: [String: Any] = [:]
     public var extra: [String: Any] = [:]
 
-    private init() {}
+    /// 空配置，所有字段由调用方自己填；一般用下面对应口子的预设更省事
+    public init() {}
 
     /// 开启 TTS 播报
     public mutating func tts(voiceName: String, provider: String = "microsoft") {

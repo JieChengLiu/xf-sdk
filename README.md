@@ -50,7 +50,7 @@ dependencyResolutionManagement {
 
 ```kotlin
 dependencies {
-    implementation("com.xfusion.sdk:xf-sdk-core:0.6.3")
+    implementation("com.xfusion.sdk:xf-sdk-core:0.6.4")
 }
 ```
 
@@ -71,7 +71,7 @@ Xcode → File → Add Package Dependencies，填：
 https://github.com/JieChengLiu/xf-sdk
 ```
 
-版本选 `0.6.3` 或 Up to Next Minor，添加 `XfCore` 到你的 Target。用语音功能需要在 Info.plist 加 `NSMicrophoneUsageDescription`。
+版本选 `0.6.4` 或 Up to Next Minor，添加 `XfCore` 到你的 Target。用语音功能需要在 Info.plist 加 `NSMicrophoneUsageDescription`。
 
 ## 快速开始
 
@@ -185,11 +185,11 @@ val task = client.transcription.uploadAndCreate(TranscriptionRequest("会议", "
 while (!client.transcription.status(task.taskId).execute().isCompleted) Thread.sleep(5000)
 val result = client.transcription.result(task.taskId).execute()
 
-// 左右内容相同的立体声，只转一个声道，否则同一段话会出现两遍
-val mono = TranscriptionRequest("会议", "zh-CN", "mp3", channels = listOf(0))
+// 左右各录一人的通话录音：两个声道都转，按声道区分说话人（不能同时开说话人分离）
+val call = TranscriptionRequest("通话", "zh-CN", "mp3", channels = listOf(0, 1))
 ```
 
-`channels`（iOS 同名）用来选择要转录的声道，`0` 是左声道，`1` 是右声道，不传则两个声道都转。人声只在右声道时传 `1`；左右各录一人的通话录音或不确定时不要传，否则可能丢内容。单声道文件会忽略此参数。
+`channels`（iOS 同名）用来选择要转录的声道，`0` 是左声道，`1` 是右声道。**不传默认只转左声道**，避免左右内容相同的立体声把同一段话转出两遍；单声道文件不受影响。人声只在右声道时传 `listOf(1)`；左右各录一人的通话录音传 `listOf(0, 1)`，此时不能开 `enableSpeakerDiarization`（说话人分离只支持单声道，同时传会被拒绝），说话人按声道区分。
 
 ```kotlin
 // 每个分段带译文：segments[i] 同时有 speaker、startTime/endTime、text（原文）、translatedText（译文）
@@ -207,6 +207,33 @@ result.segments.forEach { seg -> seg.words?.forEach { w -> println("${w.startTim
 
 `wordTimestamps`（iOS 同名，SDK 0.6.1 起支持）默认不开，只能在建任务时决定，没开的任务不能事后补取词级时间：JSON 不包含 `words`，SDK 中为 null / nil。`words[].startTime / endTime` 单位为秒，相对整段音频开头，保留两位小数；时间缺失时可为 null。词跟 `text` 一致，带标点、数字写成阿拉伯数字：中文通常按单字切分、标点附在前一个字上（如 `好，`），直接拼接就是原文；英文等有空格的语言按词切分，用空格连接。只有原文有词级时间，`translatedText` 没有。转写完成回调的 `result.segments[].words` 与查询结果一致。长录音词数多，开启后结果体会明显增大，不需要就保持关闭。
 
+```kotlin
+// 文字整理：转写完成后由大模型按上下文整理断句、重复和明显错字，原始 text / segments 不变
+val refined = TranscriptionRequest("访谈", "zh-CN", "m4a", refineTranscript = true)
+client.transcription.result(taskId).execute().refinement?.let { r ->
+    if (r.status == "completed") show(r.text)   // r.segments[i].sourceSegmentIndices 指向原始分段
+}
+
+// 自动选总结模板：模型从后台启用的模板里挑一个最匹配的
+val auto = TranscriptionRequest("会议", "zh-CN", "m4a", needSummary = true, autoSelectTemplate = true)
+val summary = client.transcription.summary(taskId).execute()
+summary.title              // 智能标题，语种与总结一致
+summary.templateSelection  // 选中了哪个模板、匹配分数
+
+// 重新生成总结：不重新转写，可换类型 / 模板 / 模型 / 语种，不传的沿用原设置；异步，之后继续轮询 summary
+client.transcription.regenerateSummary(taskId, SummaryRegenerateRequest(summaryTypes = listOf("meeting"))).execute()
+
+// 针对录音内容问答：服务端按 taskId 取转写原文作为上下文，SSE 流式返回
+val history = listOf(ChatMessage.user("会议定了哪些待办？"))
+client.transcription.chat(taskId, history, prompt = "用要点列出，注明负责人", listener = object : ChatStreamListener {
+    override fun onDelta(text: String) { append(text) }
+    override fun onComplete() {}
+    override fun onError(error: XfException) { showError(error) }
+})
+```
+
+`chat` 不保存对话历史：多轮时把之前的 `user` / `assistant` 消息按顺序全部带上，最后一条必须是 `user`；只接受这两种 role（最多 40 条），回答风格、角色、格式等要求放 `prompt`。回答以录音内容为依据，录音里没有的会说明未提及；模型由服务端决定。任务需已转写完成。`refineTranscript` 的整理和 `regenerateSummary` 都是异步的，额外产生模型用量。
+
 `translateSegments` 需要同时传 `translateLanguage`，分段译文在转写完成后异步生成，刚完成时可能还没有，需要继续轮询。`summaryTemplate` 的字段（`sections[].title / instruction / maxLength / format`、顶层 `maxLength`）和限制见服务端接口文档「长音频转写 · 自定义总结模板」；iOS 传 `[String: Any]`。`summaryModel` 只能是 `gpt-5.4-nano` 或 `gpt-6-luna`，其他值创建任务会失败。
 
 ```swift
@@ -217,6 +244,13 @@ let audio = try await client.tts.synthesize(TTSRequest(text: "你好", languageC
 var answer = ""
 for try await chunk in client.chat.stream(ChatAPI.request(model: "gpt-5.4-nano", messages: [.user("你好")])) {
     if let delta = chunk.delta { answer += delta }
+}
+
+// 长音频：重新生成总结、针对录音内容问答
+_ = try await client.transcription.regenerateSummary(taskId, SummaryRegenerateRequest(summaryTypes: ["meeting"]))
+var reply = ""
+for try await chunk in client.transcription.chat(taskId, messages: [.user("会议定了哪些待办？")], prompt: "用要点列出") {
+    if let delta = chunk.delta { reply += delta }
 }
 ```
 
@@ -328,7 +362,7 @@ for try await event in session.events {
 ```
 
 - **事件归属**：属于某一侧的事件都包在 `DualScreen`（iOS：`.dualScreen`）里。`side` 是说话的一侧，`targetSide` 是译文显示和播放的一侧；同一句的原文、译文、音频 `utteranceId` 相同。`Ready` 和不带 side 的错误不包装。
-- **静音**：某一侧静音超过约 55 秒时，服务端会重置这一侧的识别，你会收到 `Stopped(no_speech_timeout)` 和随后的 `Started`，不需要处理，继续发音频即可。
+- **静音**：某一侧静音超过约 55 秒（可用 `ext("noSpeechTimeoutSeconds", 秒数)` 调整）时，服务端会在内部重置这一侧的识别并自动恢复收音，不会下发 `Stopped` / `Started`，持续发音频即可。早于这一改动的服务端会下发 `Stopped(no_speech_timeout)` 和随后的 `Started`，同样不需要处理。
 - **暂停**：屏幕熄灭等场景可以调 `stop(side)` 暂停，`start(side)` 恢复；不带 side 表示两侧。`interrupt(side)` 中断这一侧说话产生的译文播报。
 - **切换语言**：新建会话。
 - **回声和串音必须处理**：服务端不做回声消除，也不判断是谁在说话。麦克风拾到扬声器的译文会再被翻译一次，形成循环，所以要做回声消除；A 侧的话被 B 侧麦克风拾到会被当成 B 侧语言识别，所以要定向拾音或足够的物理隔离。
@@ -508,7 +542,17 @@ GitHub 仓库 https://github.com/JieChengLiu/xf-sdk 里：
 
 ## 版本
 
-当前版本 `0.6.3`。`0.x` 期间小版本可能有不兼容改动，升级前请查看更新说明。
+当前版本 `0.6.4`。`0.x` 期间小版本可能有不兼容改动，升级前请查看更新说明。
+
+### 0.6.4
+
+- 长音频新增 `transcription.chat(taskId, messages, prompt)`（Android / iOS）：按任务的转写原文做多轮问答，SSE 流式返回，事件同 `chat.stream`。
+- 新增 `transcription.regenerateSummary(taskId, SummaryRegenerateRequest)`：不重新转写，换类型 / 模板 / 模型 / 语种重出总结。
+- `TranscriptionRequest` 新增可选的 `refineTranscript`（文字整理，结果在 `TranscriptionResult.refinement`）和 `autoSelectTemplate`（自动选总结模板）。
+- `TranscriptionSummary` 新增 `title` / `translatedTitle`（智能标题）和 `templateSelection`（自动选模板的结果）。
+- `StreamConfig` 的构造函数改为公开：除了用预设，也可以 `StreamConfig()` 从空配置自己填字段。
+- 文档更正：`channels` 不传时服务端默认只转左声道（此前文档写的是两个声道都转）；左右各录一人的通话录音需传 `[0, 1]`，且不能同时开说话人分离。
+- 都是新增的可选字段和方法，现有调用不用改。
 
 ### 0.6.3
 

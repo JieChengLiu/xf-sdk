@@ -31,10 +31,15 @@ public final class ChatAPI {
     public func stream(_ request: [String: Any]) -> AsyncThrowingStream<ChatChunk, Error> {
         var body = request
         body["stream"] = true
-        return AsyncThrowingStream { continuation in
+        return stream(path: "trans/v1/chat/completions", body: body, expectedChoices: (body["n"] as? NSNumber)?.intValue ?? 1)
+    }
+
+    /// 往任意返回 OpenAI chat.completion.chunk SSE 的接口发请求，转写对话也走这里
+    func stream(path: String, body: [String: Any], expectedChoices: Int) -> AsyncThrowingStream<ChatChunk, Error> {
+        AsyncThrowingStream { continuation in
             do {
-                let urlRequest = try transport.signed(transport.jsonRequest("trans/v1/chat/completions", body: body))
-                let reader = SSEReader(continuation: continuation, expectedChoices: (body["n"] as? NSNumber)?.intValue ?? 1)
+                let urlRequest = try transport.signed(transport.jsonRequest(path, body: body))
+                let reader = SSEReader(continuation: continuation, expectedChoices: expectedChoices)
                 let session = URLSession(configuration: transport.session.configuration, delegate: reader, delegateQueue: nil)
                 let task = session.dataTask(with: urlRequest)
                 continuation.onTermination = { @Sendable _ in

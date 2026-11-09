@@ -216,6 +216,63 @@ final class RestHelperTests: XCTestCase {
         XCTAssertNoThrow(try ChatAPI.checkCompletion(["choices": [["message": ["content": "hi"]]]]))
     }
 
+    func testTranscriptionRefineAndAutoSelectAreOptional() {
+        var request = TranscriptionRequest(taskName: "周会", sourceLanguage: "zh-CN", audioFormat: "mp3")
+        XCTAssertNil(request.json()["refineTranscript"])
+        XCTAssertNil(request.json()["autoSelectTemplate"])
+        XCTAssertFalse(request.formFields().contains { $0.0 == "refineTranscript" || $0.0 == "autoSelectTemplate" })
+
+        request.refineTranscript = true
+        request.autoSelectTemplate = true
+        XCTAssertEqual(request.json()["refineTranscript"] as? Bool, true)
+        XCTAssertEqual(request.json()["autoSelectTemplate"] as? Bool, true)
+        XCTAssertEqual(request.formFields().filter { $0.0 == "refineTranscript" }.map { $0.1 }, ["true"])
+        XCTAssertEqual(request.formFields().filter { $0.0 == "autoSelectTemplate" }.map { $0.1 }, ["true"])
+    }
+
+    func testSummaryRegenerateRequestOnlySendsGivenFields() {
+        XCTAssertTrue(SummaryRegenerateRequest().json().isEmpty)
+        let json = SummaryRegenerateRequest(summaryTypes: ["meeting"], summaryModel: "gpt-6-luna").json()
+        XCTAssertEqual(json["summaryTypes"] as? [String], ["meeting"])
+        XCTAssertEqual(json["summaryModel"] as? String, "gpt-6-luna")
+        XCTAssertNil(json["summaryLanguage"])
+        XCTAssertNil(json["autoSelectTemplate"])
+    }
+
+    func testTranscriptionResultParsesRefinement() {
+        let refined = TranscriptionResult([
+            "text": "原文", "segments": [],
+            "refinement": ["status": "completed", "model": "gpt-6-luna", "text": "整理版",
+                           "segments": [["speaker": "Guest-1", "text": "整理版", "sourceSegmentIndices": [0, 2]]]],
+        ]).refinement
+        XCTAssertEqual(refined?.status, "completed")
+        XCTAssertEqual(refined?.text, "整理版")
+        XCTAssertEqual(refined?.segments, [TranscriptionResult.RefinedSegment(speaker: "Guest-1", text: "整理版",
+                                                                               sourceSegmentIndices: [0, 2])])
+        XCTAssertNil(TranscriptionResult(["text": "原文", "segments": []]).refinement)
+    }
+
+    func testTranscriptionSummaryParsesTitleAndTemplateSelection() {
+        let summary = TranscriptionSummary([
+            "taskId": "t1", "status": "completed", "items": [],
+            "title": "双屏语种问题周会", "translatedTitle": "Dual-screen language review",
+            "templateSelection": ["templateCode": "meeting", "confidence": 0.82],
+        ])
+        XCTAssertEqual(summary.title, "双屏语种问题周会")
+        XCTAssertEqual(summary.translatedTitle, "Dual-screen language review")
+        XCTAssertEqual((summary.templateSelection as? [String: Any])?["templateCode"] as? String, "meeting")
+        XCTAssertNil(TranscriptionSummary(["items": []]).title)
+    }
+
+    func testStreamConfigCanBeBuiltFromScratch() {
+        var config = StreamConfig()
+        config.sourceLanguage = "my-MM"
+        config.candidateLanguages = ["my-MM", "zh-CN"]
+        let json = config.json(deviceId: "d1", macId: "m1")
+        XCTAssertEqual(json["sourceLanguage"] as? String, "my-MM")
+        XCTAssertEqual((json["ext"] as? [String: Any])?["candidateLangs"] as? [String], ["my-MM", "zh-CN"])
+    }
+
     func testRegistrationNeverPrintsSecret() throws {
         let reg = try DeviceRegistration(["deviceId": "d1", "deviceSecret": "sec_x", "active": NSNumber(value: true)])
         XCTAssertEqual(reg.isActive, true)

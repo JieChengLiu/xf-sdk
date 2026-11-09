@@ -108,6 +108,8 @@ class MainActivity : Activity() {
         logScroll = findViewById(R.id.logScroll)
 
         loadPrefs()
+        // 联调用：adb shell am start ... --es text "长句子"，免得在模拟器里手输中文
+        intent?.getStringExtra("text")?.let { inputText.setText(it) }
         findViewById<Button>(R.id.btnSave).setOnClickListener { savePrefs(); initClient() }
         findViewById<Button>(R.id.btnRegister).setOnClickListener { register() }
         findViewById<Button>(R.id.btnTranslate).setOnClickListener { translate() }
@@ -417,6 +419,8 @@ class MainActivity : Activity() {
             if (voice.isNotEmpty()) tts(voice)
             // pcm：PcmPlayer 直接播；opus：裸流，先解码再播（默认是 mp3）
             outputFormat(if (opus) "opus" else "pcm")
+            // 联调用：--ez preserveTts true 时说话人接着说不打断上一句译文（双屏默认就是这样）
+            if (intent?.getBooleanExtra("preserveTts", false) == true) ext("preserveTtsOnInterrupt", true)
         }
         log("连接语音翻译 ${fromLang.value()} → ${toLang.value()}，播报 ${voice.ifEmpty { "关" }}" +
             if (opus) "（Opus）" else "")
@@ -462,6 +466,10 @@ class MainActivity : Activity() {
                     ttsBytes = 0
                 }
                 StreamEvent.AudioInterrupt -> {
+                    // 打断会清空播放队列，长译文"后半段没播"多半是它；记下被打断前收到了多少
+                    val ms = if (opus != null) opus.sentenceSamples / 16 else ttsBytes / 32L
+                    log("收到打断（AudioInterrupt），已清空播放；本句已收 $ttsBytes 字节 ≈ $ms ms")
+                    ttsBytes = 0
                     opus?.reset()
                     player.flush()
                 }

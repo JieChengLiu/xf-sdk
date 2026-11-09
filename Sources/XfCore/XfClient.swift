@@ -80,10 +80,12 @@ public final class XfClient {
         let deviceId = config.auth.deviceCredentials?.deviceId
         translate = TranslateAPI(transport: transport, deviceId: deviceId)
         tts = TTSAPI(transport: transport, deviceId: deviceId)
-        chat = ChatAPI(transport: transport)
+        // 局部变量传给 TranscriptionAPI：class 的 init 里，存储属性没全部赋值前不能读 self.chat
+        let chatAPI = ChatAPI(transport: transport)
+        chat = chatAPI
         image = ImageTranslateAPI(transport: transport)
         personalVoice = PersonalVoiceAPI(transport: transport)
-        transcription = TranscriptionAPI(transport: transport)
+        transcription = TranscriptionAPI(transport: transport, chat: chatAPI)
         device = DeviceAPI(transport: transport)
     }
 
