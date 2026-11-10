@@ -50,7 +50,7 @@ dependencyResolutionManagement {
 
 ```kotlin
 dependencies {
-    implementation("com.xfusion.sdk:xf-sdk-core:0.6.4")
+    implementation("com.xfusion.sdk:xf-sdk-core:0.6.6")
 }
 ```
 
@@ -71,7 +71,7 @@ Xcode → File → Add Package Dependencies，填：
 https://github.com/JieChengLiu/xf-sdk
 ```
 
-版本选 `0.6.4` 或 Up to Next Minor，添加 `XfCore` 到你的 Target。用语音功能需要在 Info.plist 加 `NSMicrophoneUsageDescription`。
+版本选 `0.6.6` 或 Up to Next Minor，添加 `XfCore` 到你的 Target。用语音功能需要在 Info.plist 加 `NSMicrophoneUsageDescription`。
 
 ## 快速开始
 
@@ -564,7 +564,16 @@ GitHub 仓库 https://github.com/JieChengLiu/xf-sdk 里：
 
 ## 版本
 
-当前版本 `0.6.4`。`0.x` 期间小版本可能有不兼容改动，升级前请查看更新说明。
+当前版本 `0.6.6`。`0.x` 期间小版本可能有不兼容改动，升级前请查看更新说明。
+
+### 0.6.6
+
+- Android：不设置 `callbackExecutor` 时，回调改在 SDK 自建的单个后台线程（`xf-sdk-callback`）上执行，不再直接在网络线程上执行。以前如果在 `onEvent` 里阻塞（如同步播放 TTS）超过 20 秒，WebSocket 读不到心跳回包，会误报 `NETWORK: sent ping but didn't receive pong`。回调仍按顺序执行；耗时操作仍建议切到自己的线程。已设置 `callbackExecutor` 的不受影响。`shutdown()` 会一并释放这个线程。
+- iOS 无改动。
+
+### 0.6.5
+
+- 会话结束事件 `Stopped` 新增结束原因枚举 `StopReason`（Android `event.stopReason`，iOS `StreamEvent.stopReason`）：`manual_stop` / `silence_detected` / `no_speech_timeout` / `asr_time_budget_exhausted`，未知值为 `UNKNOWN`；原始 `reason` 字符串保留。
 
 ### 0.6.4
 

@@ -28,7 +28,7 @@ android {
 
 dependencies {
     // okhttp 随 SDK 的 pom 传递进来；org.json 用 Android 系统自带的
-    implementation("com.xfusion.sdk:xf-sdk-core:0.6.4")
+    implementation("com.xfusion.sdk:xf-sdk-core:0.6.6")
     // 只给 demo 解 Opus TTS 用（纯 Java，不用 NDK）；SDK 本身不依赖解码库
     implementation("io.github.jaredmdobson:concentus:1.0.2")
     testImplementation("junit:junit:4.13.2")
