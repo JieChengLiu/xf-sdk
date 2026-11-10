@@ -100,6 +100,16 @@ final class StreamProtocolTests: XCTestCase {
         XCTAssertEqual(StreamConfig.ttsOnly(voiceName: "v").json(deviceId: "d", macId: "")["ttsProvider"] as? String, "microsoft")
     }
 
+    func testStopReasonMapsKnownValuesAndFallsBackToUnknown() {
+        XCTAssertEqual(StreamEvent.parse(["type": "stopped", "reason": "manual_stop"])?.stopReason, .manualStop)
+        XCTAssertEqual(StopReason(reason: "silence_detected"), .silenceDetected)
+        XCTAssertEqual(StopReason(reason: "no_speech_timeout"), .noSpeechTimeout)
+        XCTAssertEqual(StopReason(reason: "asr_time_budget_exhausted"), .asrTimeBudgetExhausted)
+        XCTAssertEqual(StopReason(reason: "some_future_reason"), .unknown)
+        XCTAssertEqual(StopReason(reason: nil), .unknown)
+        XCTAssertNil(StreamEvent.ttsEnd.stopReason)
+    }
+
     func testParsesEvents() {
         // push-to-talk / multimodal 文档里 asr_result 用的是 text 字段
         guard case .asrFinal(let text, let lang, let speaker, let timings)? = StreamEvent.parse([

@@ -362,7 +362,7 @@ for try await event in session.events {
 ```
 
 - **事件归属**：属于某一侧的事件都包在 `DualScreen`（iOS：`.dualScreen`）里。`side` 是说话的一侧，`targetSide` 是译文显示和播放的一侧；同一句的原文、译文、音频 `utteranceId` 相同。`Ready` 和不带 side 的错误不包装。
-- **静音**：某一侧静音超过约 55 秒（可用 `ext("noSpeechTimeoutSeconds", 秒数)` 调整）时，服务端会在内部重置这一侧的识别并自动恢复收音，不会下发 `Stopped` / `Started`，持续发音频即可。早于这一改动的服务端会下发 `Stopped(no_speech_timeout)` 和随后的 `Started`，同样不需要处理。
+- **静音**：某一侧静音超过约 120 秒（可用 `ext("noSpeechTimeoutSeconds", 秒数)` 调整）时，服务端会在内部重置这一侧的识别并自动恢复收音，不会下发 `Stopped` / `Started`，持续发音频即可。早于这一改动的服务端会下发 `Stopped(no_speech_timeout)` 和随后的 `Started`，同样不需要处理。
 - **暂停**：屏幕熄灭等场景可以调 `stop(side)` 暂停，`start(side)` 恢复；不带 side 表示两侧。`interrupt(side)` 中断这一侧说话产生的译文播报。
 - **切换语言**：新建会话。
 - **回声和串音必须处理**：服务端不做回声消除，也不判断是谁在说话。麦克风拾到扬声器的译文会再被翻译一次，形成循环，所以要做回声消除；A 侧的话被 B 侧麦克风拾到会被当成 B 侧语言识别，所以要定向拾音或足够的物理隔离。
@@ -470,6 +470,28 @@ recorder.onPCM { session.sendPCM(suppressor.process($0)) }
 | `ServerError` | 会话内的错误，连接不一定断开 |
 
 iOS 的事件名是对应的小写形式（`.ready`、`.asrPartial` ……）。
+
+#### 本轮结束原因 `StopReason`
+
+`Stopped` 带服务端原始字符串 `reason`，同时可以直接取枚举：Android `event.stopReason`，iOS `event.stopReason`（`.stopped` 以外的事件为 nil）。
+
+| 枚举（Android / iOS） | 服务端值 | 含义 | 建议处理 |
+|---|---|---|---|
+| `MANUAL_STOP` / `.manualStop` | `manual_stop` | 客户端发了 `stop` | 正常结束 |
+| `SILENCE_DETECTED` / `.silenceDetected` | `silence_detected` | 开启 `vadAutoStop` 时检测到说话结束 | 正常结束一轮；常开收音可重新 `start` |
+| `NO_SPEECH_TIMEOUT` / `.noSpeechTimeout` | `no_speech_timeout` | 连续 `noSpeechTimeoutSeconds` 秒（默认 120）没有识别结果 | 空闲回收，不是错误；要继续收音就重新 `start` |
+| `ASR_TIME_BUDGET_EXHAUSTED` / `.asrTimeBudgetExhausted` | `asr_time_budget_exhausted` | ASR 时长额度用完 | 不要自动重新 `start`，提示用户充值或联系管理员 |
+| `UNKNOWN` / `.unknown` | 其他或缺省 | 当前 SDK 版本不认识的原因 | 按正常结束处理 |
+
+```kotlin
+is StreamEvent.Stopped -> when (event.stopReason) {
+    StopReason.ASR_TIME_BUDGET_EXHAUSTED -> showQuotaExhausted()
+    StopReason.NO_SPEECH_TIMEOUT -> if (keepListening) session.start()
+    else -> Unit
+}
+```
+
+出错不走 `Stopped`：会话内错误是 `ServerError`，鉴权失败、会话冲突等会直接断开连接，要分别处理。
 
 ## 客户端工具
 
